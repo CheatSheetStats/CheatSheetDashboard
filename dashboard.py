@@ -83,6 +83,7 @@ st.sidebar.subheader("Advanced Filters")
 show_strong_only = st.sidebar.checkbox("Show Strong Predictions Only")
 show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
 show_btts_yes_only = st.sidebar.checkbox("Show BTTS Yes")
+show_btts_lean = st.sidebar.checkbox("Show BTTS Y (Lean)")
 show_over25_yes_only = st.sidebar.checkbox("Show Over 2.5 Goals Yes Only")
 show_home_edge = st.sidebar.checkbox("Show Home Edge")
 show_away_edge = st.sidebar.checkbox("Show Away Edge")
@@ -99,6 +100,24 @@ if show_btts_yes_only:
     if 'Home Clean Sheet %' in filtered_df.columns and 'Away Clean Sheet %' in filtered_df.columns:
         btts_filter = btts_filter & (filtered_df['Home Clean Sheet %'] < 32) & (filtered_df['Away Clean Sheet %'] < 32)
     filtered_df = filtered_df[btts_filter]
+if show_btts_lean:
+    if all(col in filtered_df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Home Clean Sheet %', 'Away Clean Sheet %']):
+        # Count how many criteria are met (need at least 3 of 4)
+        # Criteria: 1) BTTS=Y (always required), 2) Home xG>1.2, 3) Away xG>1.2, 4) Both CS%<32
+        def btts_lean_criteria(row):
+            if row['PredictionBTTS'] != 'Y':
+                return False
+            criteria_met = 0
+            if row['Home xG'] > 1.2:
+                criteria_met += 1
+            if row['Away xG'] > 1.2:
+                criteria_met += 1
+            if row['Home Clean Sheet %'] < 32 and row['Away Clean Sheet %'] < 32:
+                criteria_met += 1
+            # Need exactly 2 or 3 criteria met (if 3 met, it means all 4 are met which is handled by strict filter)
+            # So for lean, we want 2 of the 3 additional criteria
+            return criteria_met == 2
+        filtered_df = filtered_df[filtered_df.apply(btts_lean_criteria, axis=1)]
 if show_over25_yes_only:
     filtered_df = filtered_df[filtered_df['Over25YN'] == 'Y']
 if show_home_edge:
@@ -133,8 +152,9 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📊 Metrics")
 st.sidebar.metric("Total Fixtures", len(filtered_df))
 st.sidebar.metric("Strong Predictions", filtered_df['Strong Prediction'].notna().sum())
-# Calculate BTTS with stricter criteria
+# Calculate BTTS with stricter criteria (all 4 requirements)
 btts_count = 0
+btts_lean_count = 0
 if all(col in df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Home Clean Sheet %', 'Away Clean Sheet %']):
     btts_qualified = df[
         (df['PredictionBTTS'] == 'Y') & 
@@ -144,9 +164,24 @@ if all(col in df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Ho
         (df['Away Clean Sheet %'] < 32)
     ]
     btts_count = len(btts_qualified)
+    
+    # Calculate BTTS Lean (3 of 4 criteria: BTTS=Y is required, then 2 of the 3 other criteria)
+    def btts_lean_criteria(row):
+        if row['PredictionBTTS'] != 'Y':
+            return False
+        criteria_met = 0
+        if row['Home xG'] > 1.2:
+            criteria_met += 1
+        if row['Away xG'] > 1.2:
+            criteria_met += 1
+        if row['Home Clean Sheet %'] < 32 and row['Away Clean Sheet %'] < 32:
+            criteria_met += 1
+        return criteria_met == 2
+    btts_lean_count = df.apply(btts_lean_criteria, axis=1).sum()
 else:
     btts_count = (df['PredictionBTTS'] == 'Y').sum()
 st.sidebar.metric("BTTS Qualified", btts_count)
+st.sidebar.metric("BTTS Lean", btts_lean_count)
 st.sidebar.metric("O2.5 Yes", (filtered_df['Over25YN'] == 'Y').sum())
 if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
     home_edge_count = ((filtered_df['Form Δ'] >= 0.7) & (filtered_df['PPG Δ'] >= 0.7)).sum()
