@@ -55,7 +55,7 @@ if {'Home PPG', 'Away PPG'}.issubset(df.columns):
 if {'Home form PPG', 'Away form PPG'}.issubset(df.columns):
     df['Form Δ'] = df['Home form PPG'] - df['Away form PPG']
 
-if 'Over 2.5 Goals %'.issubset(df.columns):
+if {'Over 2.5 Goals %'}.issubset(df.columns):
     df['Over25YN'] = df['Over 2.5 Goals %'].apply(lambda x: 'Y' if x >= 50 else 'N')
 
 # ===============================
