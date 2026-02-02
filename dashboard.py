@@ -129,14 +129,12 @@ if show_away_edge:
 if show_home_edge_lean:
     if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
         filtered_df = filtered_df[
-            (filtered_df['Form Δ'] >= 0.4) & (filtered_df['Form Δ'] < 0.4) & 
-            (filtered_df['PPG Δ'] >= 0.4) & (filtered_df['PPG Δ'] < 0.4)
+            (filtered_df['Form Δ'] >= 0.4) & (filtered_df['PPG Δ'] < 0.4) & 
         ]
 if show_away_edge_lean:
     if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
         filtered_df = filtered_df[
-            (filtered_df['Form Δ'] <= -0.4) & (filtered_df['Form Δ'] > -0.4) & 
-            (filtered_df['PPG Δ'] <= -0.4) & (filtered_df['PPG Δ'] > -0.4)
+            (filtered_df['Form Δ'] <= -0.4) & (filtered_df['PPG Δ'] > -0.4) & 
         ]
 if show_matching_only:
     def predictions_match(row):
