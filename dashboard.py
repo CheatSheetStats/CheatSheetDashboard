@@ -82,12 +82,12 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Advanced Filters")
 show_strong_only = st.sidebar.checkbox("Show Strong Predictions Only")
 show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
-show_btts_yes_only = st.sidebar.checkbox("Show BTTS Yes (xG>1.2, CS<32%)")
+show_btts_yes_only = st.sidebar.checkbox("Show BTTS Yes")
 show_over25_yes_only = st.sidebar.checkbox("Show Over 2.5 Goals Yes Only")
-show_home_edge = st.sidebar.checkbox("Show Home Edge (Form Δ & PPG Δ ≥ 0.7)")
-show_away_edge = st.sidebar.checkbox("Show Away Edge (Form Δ & PPG Δ ≤ -0.7)")
-show_home_edge_lean = st.sidebar.checkbox("Show Home Edge (Lean) (Form Δ & PPG Δ 0.4-0.7)")
-show_away_edge_lean = st.sidebar.checkbox("Show Away Edge (Lean) (Form Δ & PPG Δ -0.7 to -0.4)")
+show_home_edge = st.sidebar.checkbox("Show Home Edge")
+show_away_edge = st.sidebar.checkbox("Show Away Edge")
+show_home_edge_lean = st.sidebar.checkbox("Show Home Edge (Lean)")
+show_away_edge_lean = st.sidebar.checkbox("Show Away Edge (Lean)")
 
 # Apply advanced filters
 if show_strong_only:
