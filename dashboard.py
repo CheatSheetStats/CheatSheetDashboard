@@ -86,8 +86,8 @@ show_btts_yes_only = st.sidebar.checkbox("Show BTTS Yes (xG>1.2, CS<32%)")
 show_over25_yes_only = st.sidebar.checkbox("Show Over 2.5 Goals Yes Only")
 show_home_edge = st.sidebar.checkbox("Show Home Edge (Form Δ & PPG Δ ≥ 0.7)")
 show_away_edge = st.sidebar.checkbox("Show Away Edge (Form Δ & PPG Δ ≤ -0.7)")
-show_home_edge_lean = st.sidebar.checkbox("Show Home Edge (Lean) (Form Δ & PPG Δ ≥ 0.4)")
-show_away_edge_lean = st.sidebar.checkbox("Show Away Edge (Lean) (Form Δ & PPG Δ ≤ -0.4)")
+show_home_edge_lean = st.sidebar.checkbox("Show Home Edge (Lean) (Form Δ & PPG Δ 0.4-0.7)")
+show_away_edge_lean = st.sidebar.checkbox("Show Away Edge (Lean) (Form Δ & PPG Δ -0.7 to -0.4)")
 
 # Apply advanced filters
 if show_strong_only:
@@ -109,10 +109,16 @@ if show_away_edge:
         filtered_df = filtered_df[(filtered_df['Form Δ'] <= -0.7) & (filtered_df['PPG Δ'] <= -0.7)]
 if show_home_edge_lean:
     if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['Form Δ'] >= 0.4) & (filtered_df['PPG Δ'] >= 0.4)]
+        filtered_df = filtered_df[
+            (filtered_df['Form Δ'] >= 0.4) & (filtered_df['Form Δ'] < 0.7) & 
+            (filtered_df['PPG Δ'] >= 0.4) & (filtered_df['PPG Δ'] < 0.7)
+        ]
 if show_away_edge_lean:
     if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['Form Δ'] <= -0.4) & (filtered_df['PPG Δ'] <= -0.4)]
+        filtered_df = filtered_df[
+            (filtered_df['Form Δ'] <= -0.4) & (filtered_df['Form Δ'] > -0.7) & 
+            (filtered_df['PPG Δ'] <= -0.4) & (filtered_df['PPG Δ'] > -0.7)
+        ]
 if show_matching_only:
     def predictions_match(row):
         model_pred = row['Model Prediction']
@@ -147,9 +153,11 @@ if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
     st.sidebar.metric("Home Edge", home_edge_count)
     away_edge_count = ((filtered_df['Form Δ'] <= -0.7) & (filtered_df['PPG Δ'] <= -0.7)).sum()
     st.sidebar.metric("Away Edge", away_edge_count)
-    home_edge_lean_count = ((filtered_df['Form Δ'] >= 0.4) & (filtered_df['PPG Δ'] >= 0.4)).sum()
+    home_edge_lean_count = ((filtered_df['Form Δ'] >= 0.4) & (filtered_df['Form Δ'] < 0.7) & 
+                            (filtered_df['PPG Δ'] >= 0.4) & (filtered_df['PPG Δ'] < 0.7)).sum()
     st.sidebar.metric("Home Edge (Lean)", home_edge_lean_count)
-    away_edge_lean_count = ((filtered_df['Form Δ'] <= -0.4) & (filtered_df['PPG Δ'] <= -0.4)).sum()
+    away_edge_lean_count = ((filtered_df['Form Δ'] <= -0.4) & (filtered_df['Form Δ'] > -0.7) & 
+                            (filtered_df['PPG Δ'] <= -0.4) & (filtered_df['PPG Δ'] > -0.7)).sum()
     st.sidebar.metric("Away Edge (Lean)", away_edge_lean_count)
 
 if len(filtered_df) == 0:
