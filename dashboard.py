@@ -84,10 +84,8 @@ show_strong_only = st.sidebar.checkbox("Show Strong Predictions Only")
 show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
 show_btts_yes_only = st.sidebar.checkbox("Show BTTS Yes Only")
 show_over25_yes_only = st.sidebar.checkbox("Show Over 2.5 Goals Yes Only")
-show_strong_home_form = st.sidebar.checkbox("Show Strong Home Form (Form Δ +0.4 or better)")
-show_strong_away_form = st.sidebar.checkbox("Show Strong Away Form (Form Δ -0.4 or better)")
-show_strong_home_ppg = st.sidebar.checkbox("Show Strong Home PPG (PPG Δ +0.4 or better)")
-show_strong_away_ppg = st.sidebar.checkbox("Show Strong Away PPG (PPG Δ -0.4 or better)")
+show_home_edge = st.sidebar.checkbox("Show Home Edge (Form Δ & PPG Δ ≥ 0.7)")
+show_away_edge = st.sidebar.checkbox("Show Away Edge (Form Δ & PPG Δ ≤ -0.7)")
 
 # Apply advanced filters
 if show_strong_only:
@@ -96,18 +94,12 @@ if show_btts_yes_only:
     filtered_df = filtered_df[filtered_df['PredictionBTTS'] == 'Y']
 if show_over25_yes_only:
     filtered_df = filtered_df[filtered_df['Over25YN'] == 'Y']
-if show_strong_home_form:
-    if 'Form Δ' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['Form Δ'] >= 0.4]
-if show_strong_away_form:
-    if 'Form Δ' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['Form Δ'] <= -0.4]
-if show_strong_home_ppg:
-    if 'PPG Δ' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['PPG Δ'] >= 0.4]
-if show_strong_away_ppg:
-    if 'PPG Δ' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['PPG Δ'] <= -0.4]
+if show_home_edge:
+    if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
+        filtered_df = filtered_df[(filtered_df['Form Δ'] >= 0.7) & (filtered_df['PPG Δ'] >= 0.7)]
+if show_away_edge:
+    if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
+        filtered_df = filtered_df[(filtered_df['Form Δ'] <= -0.7) & (filtered_df['PPG Δ'] <= -0.7)]
 if show_matching_only:
     def predictions_match(row):
         model_pred = row['Model Prediction']
@@ -124,16 +116,11 @@ st.sidebar.metric("Total Fixtures", len(filtered_df))
 st.sidebar.metric("Strong Predictions", filtered_df['Strong Prediction'].notna().sum())
 st.sidebar.metric("BTTS Yes", (filtered_df['PredictionBTTS'] == 'Y').sum())
 st.sidebar.metric("O2.5 Yes", (filtered_df['Over25YN'] == 'Y').sum())
-if 'Form Δ' in filtered_df.columns:
-    strong_home_form_count = (filtered_df['Form Δ'] >= 0.4).sum()
-    st.sidebar.metric("Strong Home Form", strong_home_form_count)
-    strong_away_form_count = (filtered_df['Form Δ'] <= -0.4).sum()
-    st.sidebar.metric("Strong Away Form", strong_away_form_count)
-if 'PPG Δ' in filtered_df.columns:
-    strong_home_ppg_count = (filtered_df['PPG Δ'] >= 0.4).sum()
-    st.sidebar.metric("Strong Home PPG", strong_home_ppg_count)
-    strong_away_ppg_count = (filtered_df['PPG Δ'] <= -0.4).sum()
-    st.sidebar.metric("Strong Away PPG", strong_away_ppg_count)
+if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
+    home_edge_count = ((filtered_df['Form Δ'] >= 0.7) & (filtered_df['PPG Δ'] >= 0.7)).sum()
+    st.sidebar.metric("Home Edge", home_edge_count)
+    away_edge_count = ((filtered_df['Form Δ'] <= -0.7) & (filtered_df['PPG Δ'] <= -0.7)).sum()
+    st.sidebar.metric("Away Edge", away_edge_count)
 
 if len(filtered_df) == 0:
     st.warning("No fixtures match the selected filters.")
