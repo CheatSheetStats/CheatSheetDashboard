@@ -82,16 +82,23 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Advanced Filters")
 show_strong_only = st.sidebar.checkbox("Show Strong Predictions Only")
 show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
-show_btts_yes_only = st.sidebar.checkbox("Show BTTS Yes Only")
+show_btts_yes_only = st.sidebar.checkbox("Show BTTS Yes (xG>1.2, CS<32%)")
 show_over25_yes_only = st.sidebar.checkbox("Show Over 2.5 Goals Yes Only")
 show_home_edge = st.sidebar.checkbox("Show Home Edge (Form Δ & PPG Δ ≥ 0.7)")
 show_away_edge = st.sidebar.checkbox("Show Away Edge (Form Δ & PPG Δ ≤ -0.7)")
+show_home_edge_lean = st.sidebar.checkbox("Show Home Edge (Lean) (Form Δ & PPG Δ ≥ 0.4)")
+show_away_edge_lean = st.sidebar.checkbox("Show Away Edge (Lean) (Form Δ & PPG Δ ≤ -0.4)")
 
 # Apply advanced filters
 if show_strong_only:
     filtered_df = filtered_df[filtered_df['Strong Prediction'].notna()]
 if show_btts_yes_only:
-    filtered_df = filtered_df[filtered_df['PredictionBTTS'] == 'Y']
+    btts_filter = filtered_df['PredictionBTTS'] == 'Y'
+    if 'Home xG' in filtered_df.columns and 'Away xG' in filtered_df.columns:
+        btts_filter = btts_filter & (filtered_df['Home xG'] > 1.2) & (filtered_df['Away xG'] > 1.2)
+    if 'Home Clean Sheet %' in filtered_df.columns and 'Away Clean Sheet %' in filtered_df.columns:
+        btts_filter = btts_filter & (filtered_df['Home Clean Sheet %'] < 32) & (filtered_df['Away Clean Sheet %'] < 32)
+    filtered_df = filtered_df[btts_filter]
 if show_over25_yes_only:
     filtered_df = filtered_df[filtered_df['Over25YN'] == 'Y']
 if show_home_edge:
@@ -100,6 +107,12 @@ if show_home_edge:
 if show_away_edge:
     if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
         filtered_df = filtered_df[(filtered_df['Form Δ'] <= -0.7) & (filtered_df['PPG Δ'] <= -0.7)]
+if show_home_edge_lean:
+    if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
+        filtered_df = filtered_df[(filtered_df['Form Δ'] >= 0.4) & (filtered_df['PPG Δ'] >= 0.4)]
+if show_away_edge_lean:
+    if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
+        filtered_df = filtered_df[(filtered_df['Form Δ'] <= -0.4) & (filtered_df['PPG Δ'] <= -0.4)]
 if show_matching_only:
     def predictions_match(row):
         model_pred = row['Model Prediction']
@@ -114,13 +127,30 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📊 Metrics")
 st.sidebar.metric("Total Fixtures", len(filtered_df))
 st.sidebar.metric("Strong Predictions", filtered_df['Strong Prediction'].notna().sum())
-st.sidebar.metric("BTTS Yes", (filtered_df['PredictionBTTS'] == 'Y').sum())
+# Calculate BTTS with stricter criteria
+btts_count = 0
+if all(col in df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Home Clean Sheet %', 'Away Clean Sheet %']):
+    btts_qualified = df[
+        (df['PredictionBTTS'] == 'Y') & 
+        (df['Home xG'] > 1.2) & 
+        (df['Away xG'] > 1.2) & 
+        (df['Home Clean Sheet %'] < 32) & 
+        (df['Away Clean Sheet %'] < 32)
+    ]
+    btts_count = len(btts_qualified)
+else:
+    btts_count = (df['PredictionBTTS'] == 'Y').sum()
+st.sidebar.metric("BTTS Qualified", btts_count)
 st.sidebar.metric("O2.5 Yes", (filtered_df['Over25YN'] == 'Y').sum())
 if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
     home_edge_count = ((filtered_df['Form Δ'] >= 0.7) & (filtered_df['PPG Δ'] >= 0.7)).sum()
     st.sidebar.metric("Home Edge", home_edge_count)
     away_edge_count = ((filtered_df['Form Δ'] <= -0.7) & (filtered_df['PPG Δ'] <= -0.7)).sum()
     st.sidebar.metric("Away Edge", away_edge_count)
+    home_edge_lean_count = ((filtered_df['Form Δ'] >= 0.4) & (filtered_df['PPG Δ'] >= 0.4)).sum()
+    st.sidebar.metric("Home Edge (Lean)", home_edge_lean_count)
+    away_edge_lean_count = ((filtered_df['Form Δ'] <= -0.4) & (filtered_df['PPG Δ'] <= -0.4)).sum()
+    st.sidebar.metric("Away Edge (Lean)", away_edge_lean_count)
 
 if len(filtered_df) == 0:
     st.warning("No fixtures match the selected filters.")
