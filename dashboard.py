@@ -26,13 +26,45 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Enhanced Mobile-Responsive CSS
 st.markdown("""
 <style>
 .main { padding: 0rem 1rem; }
 .metric-card { background-color: #f0f2f6; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #1f77b4; }
 [data-testid="stDataFrame"] th { text-align: center !important; }
 [data-testid="stDataFrame"] td { text-align: center !important; }
+
+/* Mobile responsive improvements */
+@media (max-width: 768px) {
+    .main { padding: 0rem 0.5rem; }
+    
+    /* Smaller font for table on mobile */
+    [data-testid="stDataFrame"] {
+        font-size: 11px !important;
+    }
+    
+    [data-testid="stDataFrame"] th,
+    [data-testid="stDataFrame"] td {
+        padding: 3px 5px !important;
+        white-space: nowrap;
+    }
+    
+    /* Make metrics stack better on mobile */
+    [data-testid="stMetric"] {
+        font-size: 0.9rem;
+    }
+    
+    /* Reduce title size on mobile */
+    h1 { font-size: 1.5rem !important; }
+    h2 { font-size: 1.2rem !important; }
+    h3 { font-size: 1rem !important; }
+}
+
+/* Ensure table scrolls horizontally on small screens */
+[data-testid="stDataFrame"] {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -55,6 +87,10 @@ if 'Home form PPG' in df.columns and 'Away form PPG' in df.columns:
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
+
+# Mobile View Toggle
+is_mobile = st.sidebar.checkbox("📱 Mobile View", value=False, help="Show fewer columns optimized for mobile screens")
+
 leagues = sorted(df['Excel Document'].unique())
 selected_leagues = st.sidebar.multiselect("Select Leagues", leagues, default=leagues)
 
@@ -199,46 +235,73 @@ else:
     col4.metric("Strong", f"{strong_count} ({strong_count / len(filtered_df) * 100:.1f}%)")
     st.markdown("---")
     
-    # Table - compact with differences only, original PPG/Form removed
-    display_columns = [
-        'Match Date', 'Excel Document',
-        'Home Team Rank', 'Home Team', 'Away Team', 'Away Team Rank',
-        'Home Win %', 'Draw %', 'Away Win %',
-        'Model Prediction', 'Confidence Pick', 'Strong Prediction',
-        'PredictionBTTS', 'Over25YN', 
-        'Home Clean Sheet %', 'Away Clean Sheet %',
-        'PPG Δ', 'Form Δ',
-        'Home xG', 'Away xG',
-        'BTTS %', 'Over 2.5 Goals %'
-    ]
+    # Define column sets for different views
+    if is_mobile:
+        # Mobile view - essential columns only
+        display_columns = [
+            'Match Date', 'Excel Document',
+            'Home Team', 'Away Team',
+            'Home Win %', 'Draw %', 'Away Win %',
+            'Model Prediction', 'Strong Prediction',
+            'PredictionBTTS', 'Over25YN'
+        ]
+    else:
+        # Desktop view - all columns
+        display_columns = [
+            'Match Date', 'Excel Document',
+            'Home Team Rank', 'Home Team', 'Away Team', 'Away Team Rank',
+            'Home Win %', 'Draw %', 'Away Win %',
+            'Model Prediction', 'Confidence Pick', 'Strong Prediction',
+            'PredictionBTTS', 'Over25YN', 
+            'Home Clean Sheet %', 'Away Clean Sheet %',
+            'PPG Δ', 'Form Δ',
+            'Home xG', 'Away xG',
+            'BTTS %', 'Over 2.5 Goals %'
+        ]
+    
     available_columns = [col for col in display_columns if col in filtered_df.columns]
     table_df = filtered_df[available_columns].copy()
     
-    # Rename columns
-    table_df.rename(columns={
-        'Match Date': 'Date',
-        'Excel Document': 'League',
-        'Home Team Rank': 'H R',
-        'Home Team': 'Home',
-        'Away Team': 'Away',
-        'Away Team Rank': 'A R',
-        'Home Win %': 'H%',
-        'Draw %': 'D%',
-        'Away Win %': 'A%',
-        'PPG Δ': 'PPG Δ',
-        'Form Δ': 'Form Δ',
-        'Home xG': 'H xG',
-        'Away xG': 'A xG',
-        'Home Clean Sheet %': 'H CS%',
-        'Away Clean Sheet %': 'A CS%',
-        'PredictionBTTS': 'BTTS',
-        'BTTS %': 'BTTS%',
-        'Over 2.5 Goals %': 'O2.5%',
-        'Over25YN': 'O2.5',
-        'Model Prediction': 'Model',
-        'Confidence Pick': 'Confidence',
-        'Strong Prediction': 'Strong'
-    }, inplace=True)
+    # Rename columns based on view
+    if is_mobile:
+        table_df.rename(columns={
+            'Match Date': 'Date',
+            'Excel Document': 'League',
+            'Home Team': 'Home',
+            'Away Team': 'Away',
+            'Home Win %': 'H%',
+            'Draw %': 'D%',
+            'Away Win %': 'A%',
+            'PredictionBTTS': 'BTTS',
+            'Over25YN': 'O2.5',
+            'Model Prediction': 'Model',
+            'Strong Prediction': 'Strong'
+        }, inplace=True)
+    else:
+        table_df.rename(columns={
+            'Match Date': 'Date',
+            'Excel Document': 'League',
+            'Home Team Rank': 'H R',
+            'Home Team': 'Home',
+            'Away Team': 'Away',
+            'Away Team Rank': 'A R',
+            'Home Win %': 'H%',
+            'Draw %': 'D%',
+            'Away Win %': 'A%',
+            'PPG Δ': 'PPG Δ',
+            'Form Δ': 'Form Δ',
+            'Home xG': 'H xG',
+            'Away xG': 'A xG',
+            'Home Clean Sheet %': 'H CS%',
+            'Away Clean Sheet %': 'A CS%',
+            'PredictionBTTS': 'BTTS',
+            'BTTS %': 'BTTS%',
+            'Over 2.5 Goals %': 'O2.5%',
+            'Over25YN': 'O2.5',
+            'Model Prediction': 'Model',
+            'Confidence Pick': 'Confidence',
+            'Strong Prediction': 'Strong'
+        }, inplace=True)
 
     # Formatting
     for pct_col in ['H%', 'D%', 'A%', 'BTTS%', 'O2.5%', 'H CS%', 'A CS%']:
@@ -253,7 +316,13 @@ else:
     if 'Date' in table_df.columns:
         table_df['Date'] = table_df['Date'].dt.strftime('%Y-%m-%d')
     
-    st.dataframe(table_df, use_container_width=True, hide_index=True, height=1200)
+    # Display table with appropriate height
+    table_height = 800 if is_mobile else 1200
+    st.dataframe(table_df, use_container_width=True, hide_index=True, height=table_height)
+    
+    # Show info message when in mobile view
+    if is_mobile:
+        st.info("📱 Mobile view active - showing essential columns only. Uncheck 'Mobile View' in sidebar to see all columns.")
     
     # Download
     st.subheader("💾 Export Filtered Data")
