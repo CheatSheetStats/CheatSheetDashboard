@@ -34,6 +34,101 @@ st.markdown("""
 [data-testid="stDataFrame"] th { text-align: center !important; }
 [data-testid="stDataFrame"] td { text-align: center !important; }
 
+/* Match card styling */
+.match-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    color: white;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.match-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 12px;
+    opacity: 0.9;
+}
+
+.match-teams {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 16px 0;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.team-name {
+    flex: 1;
+    text-align: center;
+}
+
+.vs-divider {
+    padding: 0 12px;
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.match-odds {
+    display: flex;
+    justify-content: space-around;
+    margin: 12px 0;
+    padding: 12px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 8px;
+}
+
+.odd-box {
+    text-align: center;
+}
+
+.odd-label {
+    font-size: 11px;
+    opacity: 0.8;
+    margin-bottom: 4px;
+}
+
+.odd-value {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.match-predictions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.2);
+    font-size: 13px;
+}
+
+.prediction-item {
+    text-align: center;
+}
+
+.prediction-label {
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+.prediction-value {
+    font-weight: bold;
+    margin-top: 4px;
+}
+
+.strong-badge {
+    background: #ffd700;
+    color: #333;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
 /* Mobile responsive improvements */
 @media (max-width: 768px) {
     .main { padding: 0rem 0.5rem; }
@@ -89,7 +184,7 @@ if 'Home form PPG' in df.columns and 'Away form PPG' in df.columns:
 st.sidebar.header("🔍 Filters")
 
 # Mobile View Toggle
-is_mobile = st.sidebar.checkbox("📱 Mobile View", value=False, help="Show fewer columns optimized for mobile screens")
+is_mobile = st.sidebar.checkbox("📱 Mobile Card View", value=False, help="Display matches as cards optimized for mobile screens")
 
 leagues = sorted(df['Excel Document'].unique())
 selected_leagues = st.sidebar.multiselect("Select Leagues", leagues, default=leagues)
@@ -138,8 +233,6 @@ if show_btts_yes_only:
     filtered_df = filtered_df[btts_filter]
 if show_btts_lean:
     if all(col in filtered_df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Home Clean Sheet %', 'Away Clean Sheet %']):
-        # Count how many criteria are met (need at least 3 of 4)
-        # Criteria: 1) BTTS=Y (always required), 2) Home xG>1.2, 3) Away xG>1.2, 4) Both CS%<32
         def btts_lean_criteria(row):
             if row['PredictionBTTS'] != 'Y':
                 return False
@@ -150,8 +243,6 @@ if show_btts_lean:
                 criteria_met += 1
             if row['Home Clean Sheet %'] < 32 and row['Away Clean Sheet %'] < 32:
                 criteria_met += 1
-            # Need exactly 2 or 3 criteria met (if 3 met, it means all 4 are met which is handled by strict filter)
-            # So for lean, we want 2 of the 3 additional criteria
             return criteria_met == 2
         filtered_df = filtered_df[filtered_df.apply(btts_lean_criteria, axis=1)]
 if show_over25_yes_only:
@@ -195,7 +286,6 @@ if all(col in df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Ho
     ]
     btts_count = len(btts_qualified)
     
-    # Calculate BTTS Lean (3 of 4 criteria: BTTS=Y is required, then 2 of the 3 other criteria)
     def btts_lean_criteria(row):
         if row['PredictionBTTS'] != 'Y':
             return False
@@ -235,18 +325,74 @@ else:
     col4.metric("Strong", f"{strong_count} ({strong_count / len(filtered_df) * 100:.1f}%)")
     st.markdown("---")
     
-    # Define column sets for different views
+    # Display based on view mode
     if is_mobile:
-        # Mobile view - essential columns only
-        display_columns = [
-            'Match Date', 'Excel Document',
-            'Home Team', 'Away Team',
-            'Home Win %', 'Draw %', 'Away Win %',
-            'Model Prediction', 'Strong Prediction',
-            'PredictionBTTS', 'Over25YN'
-        ]
+        # Mobile Card View
+        st.info("📱 Card view active - optimized for mobile screens")
+        
+        for idx, row in filtered_df.iterrows():
+            # Extract values with safe defaults
+            date = row['Match Date'].strftime('%Y-%m-%d') if pd.notna(row['Match Date']) else 'TBD'
+            league = row['Excel Document'] if pd.notna(row['Excel Document']) else ''
+            home = row['Home Team'] if pd.notna(row['Home Team']) else 'Home'
+            away = row['Away Team'] if pd.notna(row['Away Team']) else 'Away'
+            h_pct = f"{row['Home Win %']:.1f}%" if pd.notna(row['Home Win %']) else '-'
+            d_pct = f"{row['Draw %']:.1f}%" if pd.notna(row['Draw %']) else '-'
+            a_pct = f"{row['Away Win %']:.1f}%" if pd.notna(row['Away Win %']) else '-'
+            model = row['Model Prediction'] if pd.notna(row['Model Prediction']) else '-'
+            btts = row['PredictionBTTS'] if pd.notna(row['PredictionBTTS']) else '-'
+            o25 = row['Over25YN'] if pd.notna(row['Over25YN']) else '-'
+            strong = '⭐' if pd.notna(row.get('Strong Prediction')) else ''
+            
+            # Create card HTML
+            card_html = f"""
+            <div class="match-card">
+                <div class="match-header">
+                    <span>{date}</span>
+                    <span>{league}</span>
+                </div>
+                
+                <div class="match-teams">
+                    <div class="team-name">{home}</div>
+                    <div class="vs-divider">vs</div>
+                    <div class="team-name">{away}</div>
+                </div>
+                
+                <div class="match-odds">
+                    <div class="odd-box">
+                        <div class="odd-label">HOME</div>
+                        <div class="odd-value">{h_pct}</div>
+                    </div>
+                    <div class="odd-box">
+                        <div class="odd-label">DRAW</div>
+                        <div class="odd-value">{d_pct}</div>
+                    </div>
+                    <div class="odd-box">
+                        <div class="odd-label">AWAY</div>
+                        <div class="odd-value">{a_pct}</div>
+                    </div>
+                </div>
+                
+                <div class="match-predictions">
+                    <div class="prediction-item">
+                        <div class="prediction-label">MODEL</div>
+                        <div class="prediction-value">{model} {strong}</div>
+                    </div>
+                    <div class="prediction-item">
+                        <div class="prediction-label">BTTS</div>
+                        <div class="prediction-value">{btts}</div>
+                    </div>
+                    <div class="prediction-item">
+                        <div class="prediction-label">O2.5</div>
+                        <div class="prediction-value">{o25}</div>
+                    </div>
+                </div>
+            </div>
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
+    
     else:
-        # Desktop view - all columns
+        # Desktop Table View
         display_columns = [
             'Match Date', 'Excel Document',
             'Home Team Rank', 'Home Team', 'Away Team', 'Away Team Rank',
@@ -258,26 +404,10 @@ else:
             'Home xG', 'Away xG',
             'BTTS %', 'Over 2.5 Goals %'
         ]
-    
-    available_columns = [col for col in display_columns if col in filtered_df.columns]
-    table_df = filtered_df[available_columns].copy()
-    
-    # Rename columns based on view
-    if is_mobile:
-        table_df.rename(columns={
-            'Match Date': 'Date',
-            'Excel Document': 'League',
-            'Home Team': 'Home',
-            'Away Team': 'Away',
-            'Home Win %': 'H%',
-            'Draw %': 'D%',
-            'Away Win %': 'A%',
-            'PredictionBTTS': 'BTTS',
-            'Over25YN': 'O2.5',
-            'Model Prediction': 'Model',
-            'Strong Prediction': 'Strong'
-        }, inplace=True)
-    else:
+        
+        available_columns = [col for col in display_columns if col in filtered_df.columns]
+        table_df = filtered_df[available_columns].copy()
+        
         table_df.rename(columns={
             'Match Date': 'Date',
             'Excel Document': 'League',
@@ -303,26 +433,20 @@ else:
             'Strong Prediction': 'Strong'
         }, inplace=True)
 
-    # Formatting
-    for pct_col in ['H%', 'D%', 'A%', 'BTTS%', 'O2.5%', 'H CS%', 'A CS%']:
-        if pct_col in table_df.columns:
-            table_df[pct_col] = table_df[pct_col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
-    for num_col in ['PPG Δ', 'Form Δ', 'H xG', 'A xG']:
-        if num_col in table_df.columns:
-            table_df[num_col] = table_df[num_col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
-    for rank_col in ['H R', 'A R']:
-        if rank_col in table_df.columns:
-            table_df[rank_col] = table_df[rank_col].apply(lambda x: f"{int(x)}" if pd.notna(x) else "-")
-    if 'Date' in table_df.columns:
-        table_df['Date'] = table_df['Date'].dt.strftime('%Y-%m-%d')
-    
-    # Display table with appropriate height
-    table_height = 800 if is_mobile else 1200
-    st.dataframe(table_df, use_container_width=True, hide_index=True, height=table_height)
-    
-    # Show info message when in mobile view
-    if is_mobile:
-        st.info("📱 Mobile view active - showing essential columns only. Uncheck 'Mobile View' in sidebar to see all columns.")
+        # Formatting
+        for pct_col in ['H%', 'D%', 'A%', 'BTTS%', 'O2.5%', 'H CS%', 'A CS%']:
+            if pct_col in table_df.columns:
+                table_df[pct_col] = table_df[pct_col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
+        for num_col in ['PPG Δ', 'Form Δ', 'H xG', 'A xG']:
+            if num_col in table_df.columns:
+                table_df[num_col] = table_df[num_col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
+        for rank_col in ['H R', 'A R']:
+            if rank_col in table_df.columns:
+                table_df[rank_col] = table_df[rank_col].apply(lambda x: f"{int(x)}" if pd.notna(x) else "-")
+        if 'Date' in table_df.columns:
+            table_df['Date'] = table_df['Date'].dt.strftime('%Y-%m-%d')
+        
+        st.dataframe(table_df, use_container_width=True, hide_index=True, height=1200)
     
     # Download
     st.subheader("💾 Export Filtered Data")
