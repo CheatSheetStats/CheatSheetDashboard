@@ -421,6 +421,8 @@ else:
             'Away Win %': 'A%',
             'PPG Δ': 'PPG Δ',
             'Form Δ': 'Form Δ',
+            'Home form PPG': 'HF PPG',
+            'Away form PPG': 'AF PPG',
             'Home xG': 'H xG',
             'Away xG': 'A xG',
             'Home Clean Sheet %': 'H CS%',
