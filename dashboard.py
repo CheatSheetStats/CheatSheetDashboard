@@ -401,7 +401,8 @@ else:
             'PredictionBTTS', 'Over25YN', 
             'Home Clean Sheet %', 'Away Clean Sheet %',
             'PPG Δ', 'Form Δ',
-            'HF PPG', 'AF PPG',
+            'Home form PPG',
+            'Away form PPG',
             'Home xG', 'Away xG',
             'BTTS %', 'Over 2.5 Goals %'
         ]
