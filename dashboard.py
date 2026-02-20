@@ -220,6 +220,12 @@ show_home_edge = st.sidebar.checkbox("Show Home Edge (Form Δ & PPG Δ ≥ 0.7)"
 show_away_edge = st.sidebar.checkbox("Show Away Edge (Form Δ & PPG Δ ≤ -0.7)")
 show_home_edge_lean = st.sidebar.checkbox("Show Home Edge (Lean) (Form Δ & PPG Δ ≥ 0.4)")
 show_away_edge_lean = st.sidebar.checkbox("Show Away Edge (Lean) (Form Δ & PPG Δ ≤ -0.4)")
+show_home_quality = st.sidebar.checkbox("🏠 Home Quality Filter")
+show_away_quality = st.sidebar.checkbox("✈️ Away Quality Filter")
+if show_home_quality:
+    st.sidebar.caption("H% ≥ 45% | PPG & Form Δ > 0 | H GPG ≥ 1.2 & > A GPG | H GCPG ≤ 1.2 & < A GCPG")
+if show_away_quality:
+    st.sidebar.caption("A% ≥ 45% | PPG & Form Δ < 0 | A GPG ≥ 1.2 & > H GPG | A GCPG ≤ 1.2 & < H GCPG")
 
 # Apply advanced filters
 if show_strong_only:
@@ -259,6 +265,30 @@ if show_home_edge_lean:
 if show_away_edge_lean:
     if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
         filtered_df = filtered_df[(filtered_df['Form Δ'] <= -0.4) & (filtered_df['PPG Δ'] <= -0.4)]
+if show_home_quality:
+    required_cols = ['Home Win %', 'PPG Δ', 'Form Δ', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG']
+    if all(col in filtered_df.columns for col in required_cols):
+        filtered_df = filtered_df[
+            (filtered_df['Home Win %'] >= 45) &
+            (filtered_df['PPG Δ'] > 0) &
+            (filtered_df['Form Δ'] > 0) &
+            (filtered_df['Home Team GPG'] >= 1.2) &
+            (filtered_df['Home Team GCPG'] <= 1.2) &
+            (filtered_df['Home Team GPG'] > filtered_df['Away Team GPG']) &
+            (filtered_df['Home Team GCPG'] < filtered_df['Away Team GCPG'])
+        ]
+if show_away_quality:
+    required_cols = ['Away Win %', 'PPG Δ', 'Form Δ', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG']
+    if all(col in filtered_df.columns for col in required_cols):
+        filtered_df = filtered_df[
+            (filtered_df['Away Win %'] >= 45) &
+            (filtered_df['PPG Δ'] < 0) &
+            (filtered_df['Form Δ'] < 0) &
+            (filtered_df['Away Team GPG'] >= 1.2) &
+            (filtered_df['Away Team GCPG'] <= 1.2) &
+            (filtered_df['Away Team GPG'] > filtered_df['Home Team GPG']) &
+            (filtered_df['Away Team GCPG'] < filtered_df['Home Team GCPG'])
+        ]
 if show_matching_only:
     def predictions_match(row):
         model_pred = row['Model Prediction']
@@ -312,6 +342,32 @@ if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
     st.sidebar.metric("Home Edge (Lean)", home_edge_lean_count)
     away_edge_lean_count = ((filtered_df['Form Δ'] <= -0.4) & (filtered_df['PPG Δ'] <= -0.4)).sum()
     st.sidebar.metric("Away Edge (Lean)", away_edge_lean_count)
+
+# Home/Away Quality metrics
+home_quality_count = 0
+away_quality_count = 0
+required_quality_cols = ['Home Win %', 'Away Win %', 'PPG Δ', 'Form Δ', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG']
+if all(col in filtered_df.columns for col in required_quality_cols):
+    home_quality_count = len(filtered_df[
+        (filtered_df['Home Win %'] >= 45) &
+        (filtered_df['PPG Δ'] > 0) &
+        (filtered_df['Form Δ'] > 0) &
+        (filtered_df['Home Team GPG'] >= 1.2) &
+        (filtered_df['Home Team GCPG'] <= 1.2) &
+        (filtered_df['Home Team GPG'] > filtered_df['Away Team GPG']) &
+        (filtered_df['Home Team GCPG'] < filtered_df['Away Team GCPG'])
+    ])
+    away_quality_count = len(filtered_df[
+        (filtered_df['Away Win %'] >= 45) &
+        (filtered_df['PPG Δ'] < 0) &
+        (filtered_df['Form Δ'] < 0) &
+        (filtered_df['Away Team GPG'] >= 1.2) &
+        (filtered_df['Away Team GCPG'] <= 1.2) &
+        (filtered_df['Away Team GPG'] > filtered_df['Home Team GPG']) &
+        (filtered_df['Away Team GCPG'] < filtered_df['Home Team GCPG'])
+    ])
+st.sidebar.metric("🏠 Home Quality", home_quality_count)
+st.sidebar.metric("✈️ Away Quality", away_quality_count)
 
 if len(filtered_df) == 0:
     st.warning("No fixtures match the selected filters.")
