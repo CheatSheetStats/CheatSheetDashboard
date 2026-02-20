@@ -227,6 +227,16 @@ if show_home_quality:
 if show_away_quality:
     st.sidebar.caption("A% ≥ 45% | PPG & Form Δ < 0 | A GPG ≥ 1.2 & > H GPG | A GCPG ≤ 1.2 & < H GCPG")
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("📊 Team Stat Filters")
+st.sidebar.caption("Tick any combination — results must meet ALL ticked criteria")
+filter_home_form = st.sidebar.checkbox("🏠 Home Form PPG ≥ 1.7")
+filter_away_form = st.sidebar.checkbox("✈️ Away Form PPG ≥ 1.7")
+filter_home_gpg = st.sidebar.checkbox("🏠 Home GPG ≥ 1.7")
+filter_away_gpg = st.sidebar.checkbox("✈️ Away GPG ≥ 1.7")
+filter_home_gcpg = st.sidebar.checkbox("🏠 Home GCPG ≤ 1.2")
+filter_away_gcpg = st.sidebar.checkbox("✈️ Away GCPG ≤ 1.2")
+
 # Apply advanced filters
 if show_strong_only:
     filtered_df = filtered_df[filtered_df['Strong Prediction'].notna()]
@@ -298,6 +308,20 @@ if show_matching_only:
         return str(model_pred).strip() == str(conf_pick).replace('(L) ', '').strip()
     filtered_df = filtered_df[filtered_df.apply(predictions_match, axis=1)]
 
+# Team Stat Filters — each applied independently, ALL ticked must be satisfied
+if filter_home_form and 'Home form PPG' in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['Home form PPG'] >= 1.7]
+if filter_away_form and 'Away form PPG' in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['Away form PPG'] >= 1.7]
+if filter_home_gpg and 'Home Team GPG' in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['Home Team GPG'] >= 1.7]
+if filter_away_gpg and 'Away Team GPG' in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['Away Team GPG'] >= 1.7]
+if filter_home_gcpg and 'Home Team GCPG' in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['Home Team GCPG'] <= 1.2]
+if filter_away_gcpg and 'Away Team GCPG' in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['Away Team GCPG'] <= 1.2]
+
 # Sidebar metrics
 st.sidebar.markdown("---")
 st.sidebar.subheader("📊 Metrics")
@@ -368,6 +392,22 @@ if all(col in filtered_df.columns for col in required_quality_cols):
     ])
 st.sidebar.metric("🏠 Home Quality", home_quality_count)
 st.sidebar.metric("✈️ Away Quality", away_quality_count)
+
+# Team Stat Filter counts
+st.sidebar.markdown("---")
+st.sidebar.subheader("📊 Stat Filter Counts")
+if 'Home form PPG' in filtered_df.columns:
+    st.sidebar.metric("🏠 Home Form ≥ 1.7", (filtered_df['Home form PPG'] >= 1.7).sum())
+if 'Away form PPG' in filtered_df.columns:
+    st.sidebar.metric("✈️ Away Form ≥ 1.7", (filtered_df['Away form PPG'] >= 1.7).sum())
+if 'Home Team GPG' in filtered_df.columns:
+    st.sidebar.metric("🏠 Home GPG ≥ 1.7", (filtered_df['Home Team GPG'] >= 1.7).sum())
+if 'Away Team GPG' in filtered_df.columns:
+    st.sidebar.metric("✈️ Away GPG ≥ 1.7", (filtered_df['Away Team GPG'] >= 1.7).sum())
+if 'Home Team GCPG' in filtered_df.columns:
+    st.sidebar.metric("🏠 Home GCPG ≤ 1.2", (filtered_df['Home Team GCPG'] <= 1.2).sum())
+if 'Away Team GCPG' in filtered_df.columns:
+    st.sidebar.metric("✈️ Away GCPG ≤ 1.2", (filtered_df['Away Team GCPG'] <= 1.2).sum())
 
 if len(filtered_df) == 0:
     st.warning("No fixtures match the selected filters.")
