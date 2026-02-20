@@ -404,7 +404,7 @@ else:
             'Home Team GPG',
             'Away Team GPG',
             'Home Team GCPG',
-            'Away Team GCPG'
+            'Away Team GCPG',
             'Home form PPG',
             'Away form PPG',
             'Home xG', 'Away xG',
