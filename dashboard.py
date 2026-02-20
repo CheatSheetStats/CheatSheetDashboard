@@ -431,7 +431,7 @@ else:
             'Home Team GPG': 'H GPG',
             'Away Team GPG': 'A GPG',
             'Home Team GCPG': 'H GCPG',
-            'Home Team GCPG': 'A GCPG',
+            'Away Team GCPG': 'A GCPG',
             'Home xG': 'H xG',
             'Away xG': 'A xG',
             'Home Clean Sheet %': 'H CS%',
