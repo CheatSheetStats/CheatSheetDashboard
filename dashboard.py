@@ -403,6 +403,8 @@ else:
             'PPG Δ', 'Form Δ',
             'Home Team GPG',
             'Away Team GPG',
+            'Home Team GCPG',
+            'Away Team GCPG'
             'Home form PPG',
             'Away form PPG',
             'Home xG', 'Away xG',
@@ -428,6 +430,8 @@ else:
             'Away form PPG': 'AF PPG',
             'Home Team GPG': 'H GPG',
             'Away Team GPG': 'A GPG',
+            'Home Team GCPG': 'H GCPG',
+            'Home Team GCPG': 'A GCPG',
             'Home xG': 'H xG',
             'Away xG': 'A xG',
             'Home Clean Sheet %': 'H CS%',
