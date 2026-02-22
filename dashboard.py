@@ -213,7 +213,9 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Advanced Filters")
 show_strong_only = st.sidebar.checkbox("Show Strong Predictions Only")
 show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
-show_btts_yes_only = st.sidebar.checkbox("Show BTTS Yes (xG>1.2, CS<32%)")
+show_btts_yes_only = st.sidebar.checkbox("Show BTTS Advanced Filter")
+if show_btts_yes_only:
+    st.sidebar.caption("BTTS% ≥ 65% | Total xG ≥ 3.2 | Both GPG ≥ 1.3 | Both GCPG ≥ 1.2 | O2.5% ≥ 70%")
 show_btts_lean = st.sidebar.checkbox("Show BTTS Y (Lean) (3 of 4 criteria)")
 show_over25_yes_only = st.sidebar.checkbox("Show Over 2.5 Goals Yes Only")
 show_home_edge = st.sidebar.checkbox("Show Home Edge (Form Δ & PPG Δ ≥ 0.7)")
@@ -241,11 +243,17 @@ filter_away_gcpg = st.sidebar.checkbox("✈️ Away GCPG ≤ 1.2")
 if show_strong_only:
     filtered_df = filtered_df[filtered_df['Strong Prediction'].notna()]
 if show_btts_yes_only:
-    btts_filter = filtered_df['PredictionBTTS'] == 'Y'
+    btts_filter = pd.Series([True] * len(filtered_df), index=filtered_df.index)
+    if 'BTTS %' in filtered_df.columns:
+        btts_filter = btts_filter & (filtered_df['BTTS %'] >= 65)
     if 'Home xG' in filtered_df.columns and 'Away xG' in filtered_df.columns:
-        btts_filter = btts_filter & (filtered_df['Home xG'] > 1.2) & (filtered_df['Away xG'] > 1.2)
-    if 'Home Clean Sheet %' in filtered_df.columns and 'Away Clean Sheet %' in filtered_df.columns:
-        btts_filter = btts_filter & (filtered_df['Home Clean Sheet %'] < 32) & (filtered_df['Away Clean Sheet %'] < 32)
+        btts_filter = btts_filter & ((filtered_df['Home xG'] + filtered_df['Away xG']) >= 3.2)
+    if 'Home Team GPG' in filtered_df.columns and 'Away Team GPG' in filtered_df.columns:
+        btts_filter = btts_filter & (filtered_df['Home Team GPG'] >= 1.3) & (filtered_df['Away Team GPG'] >= 1.3)
+    if 'Home Team GCPG' in filtered_df.columns and 'Away Team GCPG' in filtered_df.columns:
+        btts_filter = btts_filter & (filtered_df['Home Team GCPG'] >= 1.2) & (filtered_df['Away Team GCPG'] >= 1.2)
+    if 'Over 2.5 Goals %' in filtered_df.columns:
+        btts_filter = btts_filter & (filtered_df['Over 2.5 Goals %'] >= 70)
     filtered_df = filtered_df[btts_filter]
 if show_btts_lean:
     if all(col in filtered_df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Home Clean Sheet %', 'Away Clean Sheet %']):
@@ -330,15 +338,18 @@ st.sidebar.metric("Strong Predictions", filtered_df['Strong Prediction'].notna()
 # Calculate BTTS with stricter criteria (all 4 requirements)
 btts_count = 0
 btts_lean_count = 0
-if all(col in df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Home Clean Sheet %', 'Away Clean Sheet %']):
-    btts_qualified = df[
-        (df['PredictionBTTS'] == 'Y') & 
-        (df['Home xG'] > 1.2) & 
-        (df['Away xG'] > 1.2) & 
-        (df['Home Clean Sheet %'] < 32) & 
-        (df['Away Clean Sheet %'] < 32)
-    ]
-    btts_count = len(btts_qualified)
+btts_adv_cols = ['BTTS %', 'Home xG', 'Away xG', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG', 'Over 2.5 Goals %']
+if all(col in df.columns for col in btts_adv_cols):
+    btts_adv_filter = (
+        (df['BTTS %'] >= 65) &
+        ((df['Home xG'] + df['Away xG']) >= 3.2) &
+        (df['Home Team GPG'] >= 1.3) &
+        (df['Away Team GPG'] >= 1.3) &
+        (df['Home Team GCPG'] >= 1.2) &
+        (df['Away Team GCPG'] >= 1.2) &
+        (df['Over 2.5 Goals %'] >= 70)
+    )
+    btts_count = btts_adv_filter.sum()
     
     def btts_lean_criteria(row):
         if row['PredictionBTTS'] != 'Y':
