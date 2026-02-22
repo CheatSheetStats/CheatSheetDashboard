@@ -216,6 +216,9 @@ show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
 show_btts_yes_only = st.sidebar.checkbox("Show BTTS Advanced Filter")
 if show_btts_yes_only:
     st.sidebar.caption("BTTS% ≥ 65% | Total xG ≥ 3.2 | Both GPG ≥ 1.3 | Both GCPG ≥ 1.2 | O2.5% ≥ 70%")
+show_btts_advanced_lean = st.sidebar.checkbox("Show BTTS Advanced Filter (Lean)")
+if show_btts_advanced_lean:
+    st.sidebar.caption("Matches 4 of 5: BTTS% ≥ 65% | Total xG ≥ 3.2 | Both GPG ≥ 1.3 | Both GCPG ≥ 1.2 | O2.5% ≥ 70%")
 show_btts_lean = st.sidebar.checkbox("Show BTTS Y (Lean) (3 of 4 criteria)")
 show_over25_yes_only = st.sidebar.checkbox("Show Over 2.5 Goals Yes Only")
 show_home_edge = st.sidebar.checkbox("Show Home Edge (Form Δ & PPG Δ ≥ 0.7)")
@@ -255,6 +258,21 @@ if show_btts_yes_only:
     if 'Over 2.5 Goals %' in filtered_df.columns:
         btts_filter = btts_filter & (filtered_df['Over 2.5 Goals %'] >= 70)
     filtered_df = filtered_df[btts_filter]
+if show_btts_advanced_lean:
+    def btts_advanced_lean_criteria(row):
+        criteria_met = 0
+        if 'BTTS %' in row.index and pd.notna(row['BTTS %']) and row['BTTS %'] >= 65:
+            criteria_met += 1
+        if 'Home xG' in row.index and 'Away xG' in row.index and pd.notna(row['Home xG']) and pd.notna(row['Away xG']) and (row['Home xG'] + row['Away xG']) >= 3.2:
+            criteria_met += 1
+        if 'Home Team GPG' in row.index and 'Away Team GPG' in row.index and pd.notna(row['Home Team GPG']) and pd.notna(row['Away Team GPG']) and row['Home Team GPG'] >= 1.3 and row['Away Team GPG'] >= 1.3:
+            criteria_met += 1
+        if 'Home Team GCPG' in row.index and 'Away Team GCPG' in row.index and pd.notna(row['Home Team GCPG']) and pd.notna(row['Away Team GCPG']) and row['Home Team GCPG'] >= 1.2 and row['Away Team GCPG'] >= 1.2:
+            criteria_met += 1
+        if 'Over 2.5 Goals %' in row.index and pd.notna(row['Over 2.5 Goals %']) and row['Over 2.5 Goals %'] >= 70:
+            criteria_met += 1
+        return criteria_met >= 4
+    filtered_df = filtered_df[filtered_df.apply(btts_advanced_lean_criteria, axis=1)]
 if show_btts_lean:
     if all(col in filtered_df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Home Clean Sheet %', 'Away Clean Sheet %']):
         def btts_lean_criteria(row):
@@ -366,6 +384,18 @@ if all(col in df.columns for col in btts_adv_cols):
 else:
     btts_count = (df['PredictionBTTS'] == 'Y').sum()
 st.sidebar.metric("BTTS Qualified", btts_count)
+# BTTS Advanced Lean metric count
+btts_adv_lean_cols = ['BTTS %', 'Home xG', 'Away xG', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG', 'Over 2.5 Goals %']
+if all(col in filtered_df.columns for col in btts_adv_lean_cols):
+    def _btts_adv_lean_count(row):
+        criteria_met = 0
+        if row['BTTS %'] >= 65: criteria_met += 1
+        if (row['Home xG'] + row['Away xG']) >= 3.2: criteria_met += 1
+        if row['Home Team GPG'] >= 1.3 and row['Away Team GPG'] >= 1.3: criteria_met += 1
+        if row['Home Team GCPG'] >= 1.2 and row['Away Team GCPG'] >= 1.2: criteria_met += 1
+        if row['Over 2.5 Goals %'] >= 70: criteria_met += 1
+        return criteria_met >= 4
+    st.sidebar.metric("BTTS Adv. Lean", filtered_df.apply(_btts_adv_lean_count, axis=1).sum())
 st.sidebar.metric("BTTS Lean", btts_lean_count)
 st.sidebar.metric("O2.5 Yes", (filtered_df['Over25YN'] == 'Y').sum())
 if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
