@@ -223,6 +223,10 @@ show_btts_advanced_lean = st.sidebar.checkbox("Show BTTS Advanced Filter (Lean)"
 if show_btts_advanced_lean:
     st.sidebar.caption("Matches 4 of 5: BTTS% ≥ 65% | Total xG ≥ 3.2 | Both GPG ≥ 1.3 | Both GCPG ≥ 1.2 | O2.5% ≥ 70%")
 
+show_btts_strict = st.sidebar.checkbox("🔒 BTTS Strict Filter")
+if show_btts_strict:
+    st.sidebar.caption("Model BTTS = Y | BTTS% ≥ 70% | Both Form GCPG ≥ 1.0 — 88.9% hit rate across 18 games")
+
 # ── Home Team Filters ─────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
 st.sidebar.subheader("🏠 Home Team Filters")
@@ -290,6 +294,17 @@ if show_btts_advanced_lean:
             criteria_met += 1
         return criteria_met >= 4
     filtered_df = filtered_df[filtered_df.apply(btts_advanced_lean_criteria, axis=1)]
+
+
+if show_btts_strict:
+    required_cols = ['PredictionBTTS', 'BTTS %', 'Home form GCPG', 'Away form GCPG']
+    if all(col in filtered_df.columns for col in required_cols):
+        filtered_df = filtered_df[
+            (filtered_df['PredictionBTTS'] == 'Y') &
+            (filtered_df['BTTS %'] >= 70) &
+            (filtered_df['Home form GCPG'] >= 1.0) &
+            (filtered_df['Away form GCPG'] >= 1.0)
+        ]
 
 if show_home_base:
     required_cols = ['Home Win %', 'Home Clean Sheet %', 'PPG Δ', 'Form Δ', 'Home Team GPG', 'Home Team GCPG']
