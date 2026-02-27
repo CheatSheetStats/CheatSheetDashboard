@@ -223,9 +223,13 @@ show_btts_advanced_lean = st.sidebar.checkbox("Show BTTS Advanced Filter (Lean)"
 if show_btts_advanced_lean:
     st.sidebar.caption("Matches 4 of 5: BTTS% ≥ 65% | Total xG ≥ 3.2 | Both GPG ≥ 1.3 | Both GCPG ≥ 1.2 | O2.5% ≥ 70%")
 
-show_btts_strict = st.sidebar.checkbox("🔒 BTTS Strict Filter")
+show_btts_strict = st.sidebar.checkbox("🔒 BTTS Base Filter")
 if show_btts_strict:
     st.sidebar.caption("Model BTTS = Y | BTTS% ≥ 70% | Both Form GCPG ≥ 1.0 — 88.9% hit rate across 18 games")
+
+show_btts_super_strict = st.sidebar.checkbox("🔒🔒 BTTS Strict Filter")
+if show_btts_super_strict:
+    st.sidebar.caption("Model BTTS = Y | BTTS% ≥ 70% | Both Form GCPG ≥ 1.2 | Both CS% < 30% — 100% hit rate across 4 games")
 
 # ── Home Team Filters ─────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
@@ -304,6 +308,18 @@ if show_btts_strict:
             (filtered_df['BTTS %'] >= 70) &
             (filtered_df['Home form GCPG'] >= 1.0) &
             (filtered_df['Away form GCPG'] >= 1.0)
+        ]
+
+if show_btts_super_strict:
+    required_cols = ['PredictionBTTS', 'BTTS %', 'Home form GCPG', 'Away form GCPG', 'Home Clean Sheet %', 'Away Clean Sheet %']
+    if all(col in filtered_df.columns for col in required_cols):
+        filtered_df = filtered_df[
+            (filtered_df['PredictionBTTS'] == 'Y') &
+            (filtered_df['BTTS %'] >= 70) &
+            (filtered_df['Home form GCPG'] >= 1.2) &
+            (filtered_df['Away form GCPG'] >= 1.2) &
+            (filtered_df['Home Clean Sheet %'] < 30) &
+            (filtered_df['Away Clean Sheet %'] < 30)
         ]
 
 if show_home_base:
