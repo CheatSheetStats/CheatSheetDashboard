@@ -200,7 +200,7 @@ if 'Match Date' in df.columns:
 else:
     start_date = end_date = None
 
-# Apply filters
+# Apply league and date filters
 filtered_df = df[df['Excel Document'].isin(selected_leagues)] if selected_leagues else df.iloc[0:0]
 if start_date and end_date and 'Match Date' in df.columns:
     filtered_df = filtered_df[
@@ -208,43 +208,59 @@ if start_date and end_date and 'Match Date' in df.columns:
         (filtered_df['Match Date'].dt.date <= end_date)
     ]
 
-# Advanced filters
+# ── Advanced Filters ──────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
 st.sidebar.subheader("Advanced Filters")
+
 show_strong_only = st.sidebar.checkbox("Show Strong Predictions Only")
 show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
+
 show_btts_yes_only = st.sidebar.checkbox("Show BTTS Advanced Filter")
 if show_btts_yes_only:
     st.sidebar.caption("BTTS% ≥ 65% | Total xG ≥ 3.2 | Both GPG ≥ 1.3 | Both GCPG ≥ 1.2 | O2.5% ≥ 70%")
+
 show_btts_advanced_lean = st.sidebar.checkbox("Show BTTS Advanced Filter (Lean)")
 if show_btts_advanced_lean:
     st.sidebar.caption("Matches 4 of 5: BTTS% ≥ 65% | Total xG ≥ 3.2 | Both GPG ≥ 1.3 | Both GCPG ≥ 1.2 | O2.5% ≥ 70%")
-show_btts_lean = st.sidebar.checkbox("Show BTTS Y (Lean) (3 of 4 criteria)")
-show_over25_yes_only = st.sidebar.checkbox("Show Over 2.5 Goals Yes Only")
-show_home_edge = st.sidebar.checkbox("Show Home Edge (Form Δ & PPG Δ ≥ 0.7)")
-show_away_edge = st.sidebar.checkbox("Show Away Edge (Form Δ & PPG Δ ≤ -0.7)")
-show_home_edge_lean = st.sidebar.checkbox("Show Home Edge (Lean) (Form Δ & PPG Δ ≥ 0.4)")
-show_away_edge_lean = st.sidebar.checkbox("Show Away Edge (Lean) (Form Δ & PPG Δ ≤ -0.4)")
-show_home_quality = st.sidebar.checkbox("🏠 Home Quality Filter")
-show_away_quality = st.sidebar.checkbox("✈️ Away Quality Filter")
-if show_home_quality:
-    st.sidebar.caption("H% ≥ 45% | PPG & Form Δ > 0 | H GPG ≥ 1.2 & > A GPG | H GCPG ≤ 1.2 & < A GCPG")
-if show_away_quality:
-    st.sidebar.caption("A% ≥ 45% | PPG & Form Δ < 0 | A GPG ≥ 1.2 & > H GPG | A GCPG ≤ 1.2 & < H GCPG")
 
+# ── Home Team Filters ─────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.subheader("📊 Team Stat Filters")
-st.sidebar.caption("Tick any combination — results must meet ALL ticked criteria")
-filter_home_form = st.sidebar.checkbox("🏠 Home Form PPG ≥ 1.7")
-filter_away_form = st.sidebar.checkbox("✈️ Away Form PPG ≥ 1.7")
-filter_home_gpg = st.sidebar.checkbox("🏠 Home GPG ≥ 1.7")
-filter_away_gpg = st.sidebar.checkbox("✈️ Away GPG ≥ 1.7")
-filter_home_gcpg = st.sidebar.checkbox("🏠 Home GCPG ≤ 1.2")
-filter_away_gcpg = st.sidebar.checkbox("✈️ Away GCPG ≤ 1.2")
+st.sidebar.subheader("🏠 Home Team Filters")
 
-# Apply advanced filters
+show_home_base = st.sidebar.checkbox("🏠 Home Base Filter")
+if show_home_base:
+    st.sidebar.caption("H% ≥ 58% | H CS% ≥ 25% | PPG Δ ≥ 0.5 | Form Δ ≥ 0.4 | H GPG ≥ 1.4 | H GCPG ≤ 1.4")
+
+show_home_strict = st.sidebar.checkbox("🏠 Home Strict Filter")
+if show_home_strict:
+    st.sidebar.caption("H% ≥ 65% | H CS% ≥ 35% | PPG Δ ≥ 1.0 | Form Δ ≥ 1.0 | H GPG ≥ 1.6 | H GCPG ≤ 1.0")
+
+# ── Away Team Filters ─────────────────────────────────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.subheader("✈️ Away Team Filters")
+
+show_away_base = st.sidebar.checkbox("✈️ Away Base Filter")
+if show_away_base:
+    st.sidebar.caption("A% ≥ 50% | A CS% ≥ 28% | PPG Δ ≤ -0.5 | Form Δ ≤ -0.5 | A GPG ≥ 1.5 | A GCPG ≤ 1.3")
+
+show_away_strict = st.sidebar.checkbox("✈️ Away Strict Filter")
+if show_away_strict:
+    st.sidebar.caption("A% ≥ 58% | A CS% ≥ 28% | PPG Δ ≤ -0.5 | Form Δ ≤ -0.5 | A GPG ≥ 1.6 | A GCPG ≤ 1.2")
+
+# ── Apply all filters ─────────────────────────────────────────────────────────
+
 if show_strong_only:
     filtered_df = filtered_df[filtered_df['Strong Prediction'].notna()]
+
+if show_matching_only:
+    def predictions_match(row):
+        model_pred = row['Model Prediction']
+        conf_pick = row['Confidence Pick']
+        if pd.isna(model_pred) or pd.isna(conf_pick):
+            return False
+        return str(model_pred).strip() == str(conf_pick).replace('(L) ', '').strip()
+    filtered_df = filtered_df[filtered_df.apply(predictions_match, axis=1)]
+
 if show_btts_yes_only:
     btts_filter = pd.Series([True] * len(filtered_df), index=filtered_df.index)
     if 'BTTS %' in filtered_df.columns:
@@ -258,6 +274,7 @@ if show_btts_yes_only:
     if 'Over 2.5 Goals %' in filtered_df.columns:
         btts_filter = btts_filter & (filtered_df['Over 2.5 Goals %'] >= 70)
     filtered_df = filtered_df[btts_filter]
+
 if show_btts_advanced_lean:
     def btts_advanced_lean_criteria(row):
         criteria_met = 0
@@ -273,182 +290,60 @@ if show_btts_advanced_lean:
             criteria_met += 1
         return criteria_met >= 4
     filtered_df = filtered_df[filtered_df.apply(btts_advanced_lean_criteria, axis=1)]
-if show_btts_lean:
-    if all(col in filtered_df.columns for col in ['PredictionBTTS', 'Home xG', 'Away xG', 'Home Clean Sheet %', 'Away Clean Sheet %']):
-        def btts_lean_criteria(row):
-            if row['PredictionBTTS'] != 'Y':
-                return False
-            criteria_met = 0
-            if row['Home xG'] > 1.2:
-                criteria_met += 1
-            if row['Away xG'] > 1.2:
-                criteria_met += 1
-            if row['Home Clean Sheet %'] < 32 and row['Away Clean Sheet %'] < 32:
-                criteria_met += 1
-            return criteria_met == 2
-        filtered_df = filtered_df[filtered_df.apply(btts_lean_criteria, axis=1)]
-if show_over25_yes_only:
-    filtered_df = filtered_df[filtered_df['Over25YN'] == 'Y']
-if show_home_edge:
-    if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['Form Δ'] >= 0.7) & (filtered_df['PPG Δ'] >= 0.7)]
-if show_away_edge:
-    if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['Form Δ'] <= -0.7) & (filtered_df['PPG Δ'] <= -0.7)]
-if show_home_edge_lean:
-    if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['Form Δ'] >= 0.4) & (filtered_df['PPG Δ'] >= 0.4)]
-if show_away_edge_lean:
-    if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['Form Δ'] <= -0.4) & (filtered_df['PPG Δ'] <= -0.4)]
-if show_home_quality:
-    required_cols = ['Home Win %', 'PPG Δ', 'Form Δ', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG']
+
+if show_home_base:
+    required_cols = ['Home Win %', 'Home Clean Sheet %', 'PPG Δ', 'Form Δ', 'Home Team GPG', 'Home Team GCPG']
     if all(col in filtered_df.columns for col in required_cols):
         filtered_df = filtered_df[
-            (filtered_df['Home Win %'] >= 45) &
-            (filtered_df['PPG Δ'] > 0) &
-            (filtered_df['Form Δ'] > 0) &
-            (filtered_df['Home Team GPG'] >= 1.2) &
-            (filtered_df['Home Team GCPG'] <= 1.2) &
-            (filtered_df['Home Team GPG'] > filtered_df['Away Team GPG']) &
-            (filtered_df['Home Team GCPG'] < filtered_df['Away Team GCPG'])
+            (filtered_df['Home Win %'] >= 58) &
+            (filtered_df['Home Clean Sheet %'] >= 25) &
+            (filtered_df['PPG Δ'] >= 0.5) &
+            (filtered_df['Form Δ'] >= 0.4) &
+            (filtered_df['Home Team GPG'] >= 1.4) &
+            (filtered_df['Home Team GCPG'] <= 1.4)
         ]
-if show_away_quality:
-    required_cols = ['Away Win %', 'PPG Δ', 'Form Δ', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG']
+
+if show_home_strict:
+    required_cols = ['Home Win %', 'Home Clean Sheet %', 'PPG Δ', 'Form Δ', 'Home Team GPG', 'Home Team GCPG']
     if all(col in filtered_df.columns for col in required_cols):
         filtered_df = filtered_df[
-            (filtered_df['Away Win %'] >= 45) &
-            (filtered_df['PPG Δ'] < 0) &
-            (filtered_df['Form Δ'] < 0) &
-            (filtered_df['Away Team GPG'] >= 1.2) &
-            (filtered_df['Away Team GCPG'] <= 1.2) &
-            (filtered_df['Away Team GPG'] > filtered_df['Home Team GPG']) &
-            (filtered_df['Away Team GCPG'] < filtered_df['Home Team GCPG'])
+            (filtered_df['Home Win %'] >= 65) &
+            (filtered_df['Home Clean Sheet %'] >= 35) &
+            (filtered_df['PPG Δ'] >= 1.0) &
+            (filtered_df['Form Δ'] >= 1.0) &
+            (filtered_df['Home Team GPG'] >= 1.6) &
+            (filtered_df['Home Team GCPG'] <= 1.0)
         ]
-if show_matching_only:
-    def predictions_match(row):
-        model_pred = row['Model Prediction']
-        conf_pick = row['Confidence Pick']
-        if pd.isna(model_pred) or pd.isna(conf_pick):
-            return False
-        return str(model_pred).strip() == str(conf_pick).replace('(L) ', '').strip()
-    filtered_df = filtered_df[filtered_df.apply(predictions_match, axis=1)]
 
-# Team Stat Filters — each applied independently, ALL ticked must be satisfied
-if filter_home_form and 'Home form PPG' in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df['Home form PPG'] >= 1.7]
-if filter_away_form and 'Away form PPG' in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df['Away form PPG'] >= 1.7]
-if filter_home_gpg and 'Home Team GPG' in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df['Home Team GPG'] >= 1.7]
-if filter_away_gpg and 'Away Team GPG' in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df['Away Team GPG'] >= 1.7]
-if filter_home_gcpg and 'Home Team GCPG' in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df['Home Team GCPG'] <= 1.2]
-if filter_away_gcpg and 'Away Team GCPG' in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df['Away Team GCPG'] <= 1.2]
+if show_away_base:
+    required_cols = ['Away Win %', 'Away Clean Sheet %', 'PPG Δ', 'Form Δ', 'Away Team GPG', 'Away Team GCPG']
+    if all(col in filtered_df.columns for col in required_cols):
+        filtered_df = filtered_df[
+            (filtered_df['Away Win %'] >= 50) &
+            (filtered_df['Away Clean Sheet %'] >= 28) &
+            (filtered_df['PPG Δ'] <= -0.5) &
+            (filtered_df['Form Δ'] <= -0.5) &
+            (filtered_df['Away Team GPG'] >= 1.5) &
+            (filtered_df['Away Team GCPG'] <= 1.3)
+        ]
 
-# Sidebar metrics
+if show_away_strict:
+    required_cols = ['Away Win %', 'Away Clean Sheet %', 'PPG Δ', 'Form Δ', 'Away Team GPG', 'Away Team GCPG']
+    if all(col in filtered_df.columns for col in required_cols):
+        filtered_df = filtered_df[
+            (filtered_df['Away Win %'] >= 58) &
+            (filtered_df['Away Clean Sheet %'] >= 28) &
+            (filtered_df['PPG Δ'] <= -0.5) &
+            (filtered_df['Form Δ'] <= -0.5) &
+            (filtered_df['Away Team GPG'] >= 1.6) &
+            (filtered_df['Away Team GCPG'] <= 1.2)
+        ]
+
+# ── Sidebar metrics ───────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
 st.sidebar.subheader("📊 Metrics")
 st.sidebar.metric("Total Fixtures", len(filtered_df))
 st.sidebar.metric("Strong Predictions", filtered_df['Strong Prediction'].notna().sum())
-# Calculate BTTS with stricter criteria (all 4 requirements)
-btts_count = 0
-btts_lean_count = 0
-btts_adv_cols = ['BTTS %', 'Home xG', 'Away xG', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG', 'Over 2.5 Goals %']
-if all(col in df.columns for col in btts_adv_cols):
-    btts_adv_filter = (
-        (df['BTTS %'] >= 65) &
-        ((df['Home xG'] + df['Away xG']) >= 3.2) &
-        (df['Home Team GPG'] >= 1.3) &
-        (df['Away Team GPG'] >= 1.3) &
-        (df['Home Team GCPG'] >= 1.2) &
-        (df['Away Team GCPG'] >= 1.2) &
-        (df['Over 2.5 Goals %'] >= 70)
-    )
-    btts_count = btts_adv_filter.sum()
-    
-    def btts_lean_criteria(row):
-        if row['PredictionBTTS'] != 'Y':
-            return False
-        criteria_met = 0
-        if row['Home xG'] > 1.2:
-            criteria_met += 1
-        if row['Away xG'] > 1.2:
-            criteria_met += 1
-        if row['Home Clean Sheet %'] < 32 and row['Away Clean Sheet %'] < 32:
-            criteria_met += 1
-        return criteria_met == 2
-    btts_lean_count = df.apply(btts_lean_criteria, axis=1).sum()
-else:
-    btts_count = (df['PredictionBTTS'] == 'Y').sum()
-st.sidebar.metric("BTTS Qualified", btts_count)
-# BTTS Advanced Lean metric count
-btts_adv_lean_cols = ['BTTS %', 'Home xG', 'Away xG', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG', 'Over 2.5 Goals %']
-if all(col in filtered_df.columns for col in btts_adv_lean_cols):
-    def _btts_adv_lean_count(row):
-        criteria_met = 0
-        if row['BTTS %'] >= 65: criteria_met += 1
-        if (row['Home xG'] + row['Away xG']) >= 3.2: criteria_met += 1
-        if row['Home Team GPG'] >= 1.3 and row['Away Team GPG'] >= 1.3: criteria_met += 1
-        if row['Home Team GCPG'] >= 1.2 and row['Away Team GCPG'] >= 1.2: criteria_met += 1
-        if row['Over 2.5 Goals %'] >= 70: criteria_met += 1
-        return criteria_met >= 4
-    st.sidebar.metric("BTTS Adv. Lean", filtered_df.apply(_btts_adv_lean_count, axis=1).sum())
-st.sidebar.metric("BTTS Lean", btts_lean_count)
-st.sidebar.metric("O2.5 Yes", (filtered_df['Over25YN'] == 'Y').sum())
-if 'Form Δ' in filtered_df.columns and 'PPG Δ' in filtered_df.columns:
-    home_edge_count = ((filtered_df['Form Δ'] >= 0.7) & (filtered_df['PPG Δ'] >= 0.7)).sum()
-    st.sidebar.metric("Home Edge", home_edge_count)
-    away_edge_count = ((filtered_df['Form Δ'] <= -0.7) & (filtered_df['PPG Δ'] <= -0.7)).sum()
-    st.sidebar.metric("Away Edge", away_edge_count)
-    home_edge_lean_count = ((filtered_df['Form Δ'] >= 0.4) & (filtered_df['PPG Δ'] >= 0.4)).sum()
-    st.sidebar.metric("Home Edge (Lean)", home_edge_lean_count)
-    away_edge_lean_count = ((filtered_df['Form Δ'] <= -0.4) & (filtered_df['PPG Δ'] <= -0.4)).sum()
-    st.sidebar.metric("Away Edge (Lean)", away_edge_lean_count)
-
-# Home/Away Quality metrics
-home_quality_count = 0
-away_quality_count = 0
-required_quality_cols = ['Home Win %', 'Away Win %', 'PPG Δ', 'Form Δ', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG']
-if all(col in filtered_df.columns for col in required_quality_cols):
-    home_quality_count = len(filtered_df[
-        (filtered_df['Home Win %'] >= 45) &
-        (filtered_df['PPG Δ'] > 0) &
-        (filtered_df['Form Δ'] > 0) &
-        (filtered_df['Home Team GPG'] >= 1.2) &
-        (filtered_df['Home Team GCPG'] <= 1.2) &
-        (filtered_df['Home Team GPG'] > filtered_df['Away Team GPG']) &
-        (filtered_df['Home Team GCPG'] < filtered_df['Away Team GCPG'])
-    ])
-    away_quality_count = len(filtered_df[
-        (filtered_df['Away Win %'] >= 45) &
-        (filtered_df['PPG Δ'] < 0) &
-        (filtered_df['Form Δ'] < 0) &
-        (filtered_df['Away Team GPG'] >= 1.2) &
-        (filtered_df['Away Team GCPG'] <= 1.2) &
-        (filtered_df['Away Team GPG'] > filtered_df['Home Team GPG']) &
-        (filtered_df['Away Team GCPG'] < filtered_df['Home Team GCPG'])
-    ])
-st.sidebar.metric("🏠 Home Quality", home_quality_count)
-st.sidebar.metric("✈️ Away Quality", away_quality_count)
-
-# Team Stat Filter counts
-st.sidebar.markdown("---")
-st.sidebar.subheader("📊 Stat Filter Counts")
-if 'Home form PPG' in filtered_df.columns:
-    st.sidebar.metric("🏠 Home Form ≥ 1.7", (filtered_df['Home form PPG'] >= 1.7).sum())
-if 'Away form PPG' in filtered_df.columns:
-    st.sidebar.metric("✈️ Away Form ≥ 1.7", (filtered_df['Away form PPG'] >= 1.7).sum())
-if 'Home Team GPG' in filtered_df.columns:
-    st.sidebar.metric("🏠 Home GPG ≥ 1.7", (filtered_df['Home Team GPG'] >= 1.7).sum())
-if 'Away Team GPG' in filtered_df.columns:
-    st.sidebar.metric("✈️ Away GPG ≥ 1.7", (filtered_df['Away Team GPG'] >= 1.7).sum())
-if 'Home Team GCPG' in filtered_df.columns:
-    st.sidebar.metric("🏠 Home GCPG ≤ 1.2", (filtered_df['Home Team GCPG'] <= 1.2).sum())
-if 'Away Team GCPG' in filtered_df.columns:
-    st.sidebar.metric("✈️ Away GCPG ≤ 1.2", (filtered_df['Away Team GCPG'] <= 1.2).sum())
 
 if len(filtered_df) == 0:
     st.warning("No fixtures match the selected filters.")
