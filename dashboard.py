@@ -251,6 +251,18 @@ show_away_strict = st.sidebar.checkbox("✈️ Away Strict Filter")
 if show_away_strict:
     st.sidebar.caption("A% ≥ 58% | A CS% ≥ 28% | PPG Δ ≤ -0.5 | Form Δ ≤ -0.5 | A GPG ≥ 1.6 | A GCPG ≤ 1.2")
 
+# ── Value Filters ──────────────────────────────────────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.subheader("💎 Value Filters")
+
+show_home_value = st.sidebar.checkbox("🏠 Home Value Filter")
+if show_home_value:
+    st.sidebar.caption("Form Δ ≥ 1.0 | Away form PPG ≤ 1.2 — Excludes Base/Strict | 63.6% hit rate across 22 games")
+
+show_away_value = st.sidebar.checkbox("✈️ Away Value Filter")
+if show_away_value:
+    st.sidebar.caption("Away Form Δ ≥ 1.0 | H form PPG ≤ 1.0 | A form GPG ≥ 1.4 — Excludes Base/Strict | 41.7% hit rate across 24 games")
+
 # ── Apply all filters ─────────────────────────────────────────────────────────
 
 if show_strong_only:
@@ -354,6 +366,61 @@ if show_away_strict:
             (filtered_df['Away Team GCPG'] <= 1.2)
         ]
 
+if show_home_value:
+    required_cols = ['Home form PPG', 'Away form PPG', 'Home Win %', 'Home Clean Sheet %',
+                     'PPG Δ', 'Form Δ', 'Home Team GPG', 'Home Team GCPG']
+    if all(col in filtered_df.columns for col in required_cols):
+        home_base_excl = (
+            (filtered_df['Home Win %'] >= 58) &
+            (filtered_df['Home Clean Sheet %'] >= 25) &
+            (filtered_df['PPG Δ'] >= 0.5) &
+            (filtered_df['Form Δ'] >= 0.4) &
+            (filtered_df['Home Team GPG'] >= 1.4) &
+            (filtered_df['Home Team GCPG'] <= 1.4)
+        )
+        home_strict_excl = (
+            (filtered_df['Home Win %'] >= 65) &
+            (filtered_df['Home Clean Sheet %'] >= 35) &
+            (filtered_df['PPG Δ'] >= 1.0) &
+            (filtered_df['Form Δ'] >= 1.0) &
+            (filtered_df['Home Team GPG'] >= 1.6) &
+            (filtered_df['Home Team GCPG'] <= 1.0)
+        )
+        filtered_df = filtered_df[
+            (filtered_df['Form Δ'] >= 1.0) &
+            (filtered_df['Away form PPG'] <= 1.2) &
+            ~home_base_excl &
+            ~home_strict_excl
+        ]
+
+if show_away_value:
+    required_cols = ['Home form PPG', 'Away form PPG', 'Away form GPG', 'Away Win %',
+                     'Away Clean Sheet %', 'PPG Δ', 'Form Δ', 'Away Team GPG', 'Away Team GCPG']
+    if all(col in filtered_df.columns for col in required_cols):
+        away_base_excl = (
+            (filtered_df['Away Win %'] >= 50) &
+            (filtered_df['Away Clean Sheet %'] >= 28) &
+            (filtered_df['PPG Δ'] <= -0.5) &
+            (filtered_df['Form Δ'] <= -0.5) &
+            (filtered_df['Away Team GPG'] >= 1.5) &
+            (filtered_df['Away Team GCPG'] <= 1.3)
+        )
+        away_strict_excl = (
+            (filtered_df['Away Win %'] >= 58) &
+            (filtered_df['Away Clean Sheet %'] >= 28) &
+            (filtered_df['PPG Δ'] <= -0.5) &
+            (filtered_df['Form Δ'] <= -0.5) &
+            (filtered_df['Away Team GPG'] >= 1.6) &
+            (filtered_df['Away Team GCPG'] <= 1.2)
+        )
+        filtered_df = filtered_df[
+            ((filtered_df['Away form PPG'] - filtered_df['Home form PPG']) >= 1.0) &
+            (filtered_df['Home form PPG'] <= 1.0) &
+            (filtered_df['Away form GPG'] >= 1.4) &
+            ~away_base_excl &
+            ~away_strict_excl
+        ]
+
 # ── Sidebar metrics ───────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
 st.sidebar.subheader("📊 Metrics")
@@ -454,10 +521,6 @@ else:
             'Away Team GCPG',
             'Home form PPG',
             'Away form PPG',
-            'Home form GPG',
-            'Away form GPG',
-            'Home form GCPG',
-            'Away form GCPG',
             'Home xG', 'Away xG',
             'BTTS %', 'Over 2.5 Goals %'
         ]
@@ -479,10 +542,6 @@ else:
             'Form Δ': 'Form Δ',
             'Home form PPG': 'HF PPG',
             'Away form PPG': 'AF PPG',
-            'Home form GPG': 'HF GPG',
-            'Away form GPG': 'AF GPG',
-            'Home form GCPG': 'HF GCPG',
-            'Away form GCPG': 'AF GCPG',
             'Home Team GPG': 'H GPG',
             'Away Team GPG': 'A GPG',
             'Home Team GCPG': 'H GCPG',
