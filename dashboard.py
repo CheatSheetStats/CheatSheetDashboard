@@ -225,7 +225,7 @@ if show_btts_advanced_lean:
 
 show_btts_strict = st.sidebar.checkbox("🔒 BTTS Strict Filter")
 if show_btts_strict:
-    st.sidebar.caption("Model BTTS = Y | BTTS% ≥ 70% | Both Form GCPG ≥ 1.0 — 88.9% hit rate across 18 games")
+    st.sidebar.caption("Model BTTS = Y | BTTS% ≥ 70% | Both Form GCPG ≥ 1.0 | Both CS% < 35% — 100% hit rate across 8 games")
 
 # ── Home Team Filters ─────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
@@ -250,18 +250,6 @@ if show_away_base:
 show_away_strict = st.sidebar.checkbox("✈️ Away Strict Filter")
 if show_away_strict:
     st.sidebar.caption("A% ≥ 58% | A CS% ≥ 28% | PPG Δ ≤ -0.5 | Form Δ ≤ -0.5 | A GPG ≥ 1.6 | A GCPG ≤ 1.2")
-
-# ── Value Filters ──────────────────────────────────────────────────────────────
-st.sidebar.markdown("---")
-st.sidebar.subheader("💎 Value Filters")
-
-show_home_value = st.sidebar.checkbox("🏠 Home Value Filter")
-if show_home_value:
-    st.sidebar.caption("Form Δ ≥ 1.0 | Away form PPG ≤ 1.2 — Excludes Base/Strict | 63.6% hit rate across 22 games")
-
-show_away_value = st.sidebar.checkbox("✈️ Away Value Filter")
-if show_away_value:
-    st.sidebar.caption("Away Form Δ ≥ 1.0 | H form PPG ≤ 1.0 | A form GPG ≥ 1.4 — Excludes Base/Strict | 41.7% hit rate across 24 games")
 
 # ── Apply all filters ─────────────────────────────────────────────────────────
 
@@ -309,13 +297,15 @@ if show_btts_advanced_lean:
 
 
 if show_btts_strict:
-    required_cols = ['PredictionBTTS', 'BTTS %', 'Home form GCPG', 'Away form GCPG']
+    required_cols = ['PredictionBTTS', 'BTTS %', 'Home form GCPG', 'Away form GCPG', 'Home Clean Sheet %', 'Away Clean Sheet %']
     if all(col in filtered_df.columns for col in required_cols):
         filtered_df = filtered_df[
             (filtered_df['PredictionBTTS'] == 'Y') &
             (filtered_df['BTTS %'] >= 70) &
             (filtered_df['Home form GCPG'] >= 1.0) &
-            (filtered_df['Away form GCPG'] >= 1.0)
+            (filtered_df['Away form GCPG'] >= 1.0) &
+            (filtered_df['Home Clean Sheet %'] < 35) &
+            (filtered_df['Away Clean Sheet %'] < 35)
         ]
 
 if show_home_base:
@@ -364,61 +354,6 @@ if show_away_strict:
             (filtered_df['Form Δ'] <= -0.5) &
             (filtered_df['Away Team GPG'] >= 1.6) &
             (filtered_df['Away Team GCPG'] <= 1.2)
-        ]
-
-if show_home_value:
-    required_cols = ['Home form PPG', 'Away form PPG', 'Home Win %', 'Home Clean Sheet %',
-                     'PPG Δ', 'Form Δ', 'Home Team GPG', 'Home Team GCPG']
-    if all(col in filtered_df.columns for col in required_cols):
-        home_base_excl = (
-            (filtered_df['Home Win %'] >= 58) &
-            (filtered_df['Home Clean Sheet %'] >= 25) &
-            (filtered_df['PPG Δ'] >= 0.5) &
-            (filtered_df['Form Δ'] >= 0.4) &
-            (filtered_df['Home Team GPG'] >= 1.4) &
-            (filtered_df['Home Team GCPG'] <= 1.4)
-        )
-        home_strict_excl = (
-            (filtered_df['Home Win %'] >= 65) &
-            (filtered_df['Home Clean Sheet %'] >= 35) &
-            (filtered_df['PPG Δ'] >= 1.0) &
-            (filtered_df['Form Δ'] >= 1.0) &
-            (filtered_df['Home Team GPG'] >= 1.6) &
-            (filtered_df['Home Team GCPG'] <= 1.0)
-        )
-        filtered_df = filtered_df[
-            (filtered_df['Form Δ'] >= 1.0) &
-            (filtered_df['Away form PPG'] <= 1.2) &
-            ~home_base_excl &
-            ~home_strict_excl
-        ]
-
-if show_away_value:
-    required_cols = ['Home form PPG', 'Away form PPG', 'Away form GPG', 'Away Win %',
-                     'Away Clean Sheet %', 'PPG Δ', 'Form Δ', 'Away Team GPG', 'Away Team GCPG']
-    if all(col in filtered_df.columns for col in required_cols):
-        away_base_excl = (
-            (filtered_df['Away Win %'] >= 50) &
-            (filtered_df['Away Clean Sheet %'] >= 28) &
-            (filtered_df['PPG Δ'] <= -0.5) &
-            (filtered_df['Form Δ'] <= -0.5) &
-            (filtered_df['Away Team GPG'] >= 1.5) &
-            (filtered_df['Away Team GCPG'] <= 1.3)
-        )
-        away_strict_excl = (
-            (filtered_df['Away Win %'] >= 58) &
-            (filtered_df['Away Clean Sheet %'] >= 28) &
-            (filtered_df['PPG Δ'] <= -0.5) &
-            (filtered_df['Form Δ'] <= -0.5) &
-            (filtered_df['Away Team GPG'] >= 1.6) &
-            (filtered_df['Away Team GCPG'] <= 1.2)
-        )
-        filtered_df = filtered_df[
-            ((filtered_df['Away form PPG'] - filtered_df['Home form PPG']) >= 1.0) &
-            (filtered_df['Home form PPG'] <= 1.0) &
-            (filtered_df['Away form GPG'] >= 1.4) &
-            ~away_base_excl &
-            ~away_strict_excl
         ]
 
 # ── Sidebar metrics ───────────────────────────────────────────────────────────
