@@ -318,35 +318,35 @@ if show_acca_win:
         away_form_col = next((c for c in form_away_cols if c in filtered_df.columns), None)
 
 
-                form_ok = pd.Series(True, index=filtered_df.index)
+        form_ok = pd.Series(True, index=filtered_df.index)
 
-                # Form sanity checks:
-                # 1) Predicted team must meet a minimum recent PPG floor (avoids backing teams in terrible form)
-                # 2) Predicted team must be in equal/better form than the opponent (avoids cases like -0.2 form delta)
-                form_floor_ok = pd.Series(True, index=filtered_df.index)
+        # Form sanity checks:
+        # 1) Predicted team must meet a minimum recent PPG floor (avoids backing teams in terrible form)
+        # 2) Predicted team must be in equal/better form than the opponent (avoids cases like -0.2 form delta)
+        form_floor_ok = pd.Series(True, index=filtered_df.index)
 
-                # Prefer to use 'Form Δ' if present (it is Home form PPG - Away form PPG).
-                # For away picks we invert the sign so it's always "predicted team minus opponent".
-                if 'Form Δ' in filtered_df.columns and ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns):
-                    form_delta = pd.to_numeric(filtered_df['Form Δ'], errors='coerce')
-                    pred_form_adv = form_delta.where(is_home_pick, (-form_delta).where(is_away_pick, pd.NA))
-                    form_ok = pred_form_adv.astype(float).ge(0.0)
+        # Prefer to use 'Form Δ' if present (it is Home form PPG - Away form PPG).
+        # For away picks we invert the sign so it's always "predicted team minus opponent".
+        if 'Form Δ' in filtered_df.columns and ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns):
+            form_delta = pd.to_numeric(filtered_df['Form Δ'], errors='coerce')
+            pred_form_adv = form_delta.where(is_home_pick, (-form_delta).where(is_away_pick, pd.NA))
+            form_ok = pred_form_adv.astype(float).ge(0.0)
 
-                    # Minimum form PPG floor (use explicit form PPG columns if available)
-                    if home_form_col and away_form_col:
-                        pred_form = filtered_df[home_form_col].where(is_home_pick, filtered_df[away_form_col].where(is_away_pick, pd.NA))
-                        form_floor_ok = pd.to_numeric(pred_form, errors='coerce').ge(1.0)
-                elif home_form_col and away_form_col and ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns):
-                    pred_form = filtered_df[home_form_col].where(is_home_pick, filtered_df[away_form_col].where(is_away_pick, pd.NA))
-                    opp_form  = filtered_df[away_form_col].where(is_home_pick, filtered_df[home_form_col].where(is_away_pick, pd.NA))
-                    pred_form_adv = (pd.to_numeric(pred_form, errors='coerce') - pd.to_numeric(opp_form, errors='coerce'))
-                    form_ok = pred_form_adv.astype(float).ge(0.0)
-                    form_floor_ok = pd.to_numeric(pred_form, errors='coerce').ge(1.0)
+            # Minimum form PPG floor (use explicit form PPG columns if available)
+            if home_form_col and away_form_col:
+                pred_form = filtered_df[home_form_col].where(is_home_pick, filtered_df[away_form_col].where(is_away_pick, pd.NA))
+                form_floor_ok = pd.to_numeric(pred_form, errors='coerce').ge(1.0)
+        elif home_form_col and away_form_col and ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns):
+            pred_form = filtered_df[home_form_col].where(is_home_pick, filtered_df[away_form_col].where(is_away_pick, pd.NA))
+            opp_form  = filtered_df[away_form_col].where(is_home_pick, filtered_df[home_form_col].where(is_away_pick, pd.NA))
+            pred_form_adv = (pd.to_numeric(pred_form, errors='coerce') - pd.to_numeric(opp_form, errors='coerce'))
+            form_ok = pred_form_adv.astype(float).ge(0.0)
+            form_floor_ok = pd.to_numeric(pred_form, errors='coerce').ge(1.0)
 
-                # Combine both form requirements
-                form_ok = form_ok & form_floor_ok
+        # Combine both form requirements
+        form_ok = form_ok & form_floor_ok
 
-# Thresholds (tuned for new model scale)
+        # Thresholds (tuned for new model scale)
         filt = (
             is_team_pick & match_ok & strong_ok &
             (pred_win_pct >= 62.0) &
