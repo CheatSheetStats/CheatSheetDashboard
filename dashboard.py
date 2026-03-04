@@ -297,12 +297,39 @@ if show_acca_win:
         second_best = filtered_df.apply(_second_highest, axis=1)
         win_margin = pred_win_pct - second_best
 
+        
+        # --- Acca Win add-ons (only applied if the required columns exist) ---
+        # Big Chances advantage (predicted team minus opponent). This adds signal without just restating Win%.
+        big_home_cols = ['Home Big Chances', 'Home Team Big Chances', 'Home Big Chances per match']
+        big_away_cols = ['Away Big Chances', 'Away Team Big Chances', 'Away Big Chances per match']
+        home_big_col = next((c for c in big_home_cols if c in filtered_df.columns), None)
+        away_big_col = next((c for c in big_away_cols if c in filtered_df.columns), None)
+
+        big_adv_ok = pd.Series(True, index=filtered_df.index)
+        if home_big_col and away_big_col and ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns):
+            pred_big = filtered_df[home_big_col].where(is_home_pick, filtered_df[away_big_col].where(is_away_pick, pd.NA))
+            opp_big  = filtered_df[away_big_col].where(is_home_pick, filtered_df[home_big_col].where(is_away_pick, pd.NA))
+            big_adv = (pred_big.astype(float) - opp_big.astype(float))
+            big_adv_ok = big_adv.ge(0.4)
+        # Form sanity check: keep predicted team out of very poor recent form (if available)
+        form_home_cols = ['Home form PPG', 'Home Form PPG', 'Home PtsGameLast5', 'Home Form Pts/Game']
+        form_away_cols = ['Away form PPG', 'Away Form PPG', 'Away PtsGameLast5', 'Away Form Pts/Game']
+        home_form_col = next((c for c in form_home_cols if c in filtered_df.columns), None)
+        away_form_col = next((c for c in form_away_cols if c in filtered_df.columns), None)
+
+        form_ok = pd.Series(True, index=filtered_df.index)
+        if home_form_col and away_form_col and ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns):
+            pred_form = filtered_df[home_form_col].where(is_home_pick, filtered_df[away_form_col].where(is_away_pick, pd.NA))
+            form_ok = pred_form.astype(float).ge(1.0)
+
         # Thresholds (tuned for new model scale)
         filt = (
             is_team_pick & match_ok & strong_ok &
             (pred_win_pct >= 62.0) &
             (win_margin >= 18.0) &
-            (opp_xg <= 1.05)
+            (opp_xg <= 1.05) &
+            big_adv_ok &
+            form_ok
         )
         filtered_df = filtered_df[filt]
     else:
