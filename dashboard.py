@@ -210,10 +210,13 @@ if start_date and end_date and 'Match Date' in df.columns:
 
 # ── Advanced Filters ──────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.subheader("Advanced Filters")
+st.sidebar.subheader("Basic Filters")
 
 show_strong_only = st.sidebar.checkbox("Show Strong Predictions Only")
 show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
+
+show_btts_only = st.sidebar.checkbox("Show BTTS = Y Only")
+show_over25_only = st.sidebar.checkbox("Show Over 2.5 = Y Only")
 
 # Apply advanced filters
 if show_strong_only and 'Strong Prediction' in filtered_df.columns:
@@ -235,6 +238,14 @@ if show_matching_only and 'Model Prediction' in filtered_df.columns and 'Confide
     model_norm = filtered_df['Model Prediction'].apply(_norm_pick)
     conf_norm = filtered_df['Confidence Pick'].apply(_norm_pick)
     filtered_df = filtered_df[model_norm.eq(conf_norm) & model_norm.ne("")]
+
+# BTTS filter (PredictionBTTS == 'Y')
+if show_btts_only and 'PredictionBTTS' in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['PredictionBTTS'].astype(str).str.strip().eq('Y')]
+
+# Over 2.5 filter (Over25YN == 'Y')
+if show_over25_only and 'Over25YN' in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['Over25YN'].astype(str).str.strip().eq('Y')]
 
 # ── Sidebar metrics ───────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
