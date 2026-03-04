@@ -17,6 +17,7 @@ file_path = os.environ.get("FILE_PATH")
 
 response = supabase_client.storage.from_(bucket_name).download(file_path)
 
+
 # Page config
 st.set_page_config(
     page_title="Football Prediction Dashboard",
@@ -162,6 +163,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 st.title("⚽ Football Prediction Model Dashboard")
 st.markdown("---")
 
@@ -182,7 +184,8 @@ if 'Home form PPG' in df.columns and 'Away form PPG' in df.columns:
 st.sidebar.header("🔍 Filters")
 
 # Mobile View Toggle
-is_mobile = False  # removed mobile card view toggle
+is_mobile = False  # mobile card view toggle removed
+
 leagues = sorted(df['Excel Document'].unique())
 selected_leagues = st.sidebar.multiselect("Select Leagues", leagues, default=leagues)
 
@@ -212,3 +215,165 @@ st.sidebar.subheader("Advanced Filters")
 show_strong_only = st.sidebar.checkbox("Show Strong Predictions Only")
 show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
 
+# ── Sidebar metrics ───────────────────────────────────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.subheader("📊 Metrics")
+st.sidebar.metric("Total Fixtures", len(filtered_df))
+st.sidebar.metric("Strong Predictions", filtered_df['Strong Prediction'].notna().sum())
+
+if len(filtered_df) == 0:
+    st.warning("No fixtures match the selected filters.")
+else:
+    # Key Metrics Row
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Avg H%", f"{filtered_df['Home Win %'].mean():.1f}%")
+    col2.metric("Avg D%", f"{filtered_df['Draw %'].mean():.1f}%")
+    col3.metric("Avg A%", f"{filtered_df['Away Win %'].mean():.1f}%")
+    strong_count = filtered_df['Strong Prediction'].notna().sum()
+    col4.metric("Strong", f"{strong_count} ({strong_count / len(filtered_df) * 100:.1f}%)")
+    st.markdown("---")
+    
+    # Display based on view mode
+    if is_mobile:
+        # Mobile Card View
+        st.info("📱 Card view active - optimized for mobile screens")
+        
+        for idx, row in filtered_df.iterrows():
+            # Extract values with safe defaults
+            date = row['Match Date'].strftime('%Y-%m-%d') if pd.notna(row['Match Date']) else 'TBD'
+            league = row['Excel Document'] if pd.notna(row['Excel Document']) else ''
+            home = row['Home Team'] if pd.notna(row['Home Team']) else 'Home'
+            away = row['Away Team'] if pd.notna(row['Away Team']) else 'Away'
+            h_pct = f"{row['Home Win %']:.1f}%" if pd.notna(row['Home Win %']) else '-'
+            d_pct = f"{row['Draw %']:.1f}%" if pd.notna(row['Draw %']) else '-'
+            a_pct = f"{row['Away Win %']:.1f}%" if pd.notna(row['Away Win %']) else '-'
+            model = row['Model Prediction'] if pd.notna(row['Model Prediction']) else '-'
+            btts = row['PredictionBTTS'] if pd.notna(row['PredictionBTTS']) else '-'
+            o25 = row['Over25YN'] if pd.notna(row['Over25YN']) else '-'
+            strong = '⭐' if pd.notna(row.get('Strong Prediction')) else ''
+            
+            # Create card HTML
+            card_html = f"""
+            <div class="match-card">
+                <div class="match-header">
+                    <span>{date}</span>
+                    <span>{league}</span>
+                </div>
+                
+                <div class="match-teams">
+                    <div class="team-name">{home}</div>
+                    <div class="vs-divider">vs</div>
+                    <div class="team-name">{away}</div>
+                </div>
+                
+                <div class="match-odds">
+                    <div class="odd-box">
+                        <div class="odd-label">HOME</div>
+                        <div class="odd-value">{h_pct}</div>
+                    </div>
+                    <div class="odd-box">
+                        <div class="odd-label">DRAW</div>
+                        <div class="odd-value">{d_pct}</div>
+                    </div>
+                    <div class="odd-box">
+                        <div class="odd-label">AWAY</div>
+                        <div class="odd-value">{a_pct}</div>
+                    </div>
+                </div>
+                
+                <div class="match-predictions">
+                    <div class="prediction-item">
+                        <div class="prediction-label">MODEL</div>
+                        <div class="prediction-value">{model} {strong}</div>
+                    </div>
+                    <div class="prediction-item">
+                        <div class="prediction-label">BTTS</div>
+                        <div class="prediction-value">{btts}</div>
+                    </div>
+                    <div class="prediction-item">
+                        <div class="prediction-label">O2.5</div>
+                        <div class="prediction-value">{o25}</div>
+                    </div>
+                </div>
+            </div>
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
+    
+    else:
+        # Desktop Table View
+        display_columns = [
+            'Match Date', 'Excel Document',
+            'Home Team Rank', 'Home Team', 'Away Team', 'Away Team Rank',
+            'Home Win %', 'Draw %', 'Away Win %',
+            'Model Prediction', 'Confidence Pick', 'Strong Prediction',
+            'PredictionBTTS', 'Over25YN', 
+            'Home Clean Sheet %', 'Away Clean Sheet %',
+            'PPG Δ', 'Form Δ',
+            'Home Team GPG',
+            'Away Team GPG',
+            'Home Team GCPG',
+            'Away Team GCPG',
+            'Home form PPG',
+            'Away form PPG',
+            'Home xG', 'Away xG',
+            'BTTS %', 'Over 2.5 Goals %'
+        ]
+        
+        available_columns = [col for col in display_columns if col in filtered_df.columns]
+        table_df = filtered_df[available_columns].copy()
+        
+        table_df.rename(columns={
+            'Match Date': 'Date',
+            'Excel Document': 'League',
+            'Home Team Rank': 'H R',
+            'Home Team': 'Home',
+            'Away Team': 'Away',
+            'Away Team Rank': 'A R',
+            'Home Win %': 'H%',
+            'Draw %': 'D%',
+            'Away Win %': 'A%',
+            'PPG Δ': 'PPG Δ',
+            'Form Δ': 'Form Δ',
+            'Home form PPG': 'HF PPG',
+            'Away form PPG': 'AF PPG',
+            'Home Team GPG': 'H GPG',
+            'Away Team GPG': 'A GPG',
+            'Home Team GCPG': 'H GCPG',
+            'Away Team GCPG': 'A GCPG',
+            'Home xG': 'H xG',
+            'Away xG': 'A xG',
+            'Home Clean Sheet %': 'H CS%',
+            'Away Clean Sheet %': 'A CS%',
+            'PredictionBTTS': 'BTTS',
+            'BTTS %': 'BTTS%',
+            'Over 2.5 Goals %': 'O2.5%',
+            'Over25YN': 'O2.5',
+            'Model Prediction': 'Model',
+            'Confidence Pick': 'Confidence',
+            'Strong Prediction': 'Strong'
+        }, inplace=True)
+
+        # Formatting
+        for pct_col in ['H%', 'D%', 'A%', 'BTTS%', 'O2.5%', 'H CS%', 'A CS%']:
+            if pct_col in table_df.columns:
+                table_df[pct_col] = table_df[pct_col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
+        for num_col in ['PPG Δ', 'Form Δ', 'H xG', 'A xG']:
+            if num_col in table_df.columns:
+                table_df[num_col] = table_df[num_col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
+        for rank_col in ['H R', 'A R']:
+            if rank_col in table_df.columns:
+                table_df[rank_col] = table_df[rank_col].apply(lambda x: f"{int(x)}" if pd.notna(x) else "-")
+        if 'Date' in table_df.columns:
+            table_df['Date'] = table_df['Date'].dt.strftime('%Y-%m-%d')
+        
+        st.dataframe(table_df, use_container_width=True, hide_index=True, height=1200)
+    
+    # Download
+    st.subheader("💾 Export Filtered Data")
+    csv = filtered_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        "Download Filtered Results as CSV",
+        data=csv,
+        file_name=f'filtered_predictions_{datetime.now().strftime("%Y%m%d")}.csv',
+        mime='text/csv'
+    )
