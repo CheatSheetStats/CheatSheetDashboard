@@ -217,6 +217,8 @@ show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
 
 show_btts_only = st.sidebar.checkbox("Show BTTS = Y Only")
 show_over25_only = st.sidebar.checkbox("Show Over 2.5 = Y Only")
+show_acca_win = st.sidebar.checkbox("Acca Win")
+show_acca_btts = st.sidebar.checkbox("Acca BTTS")
 
 # Apply advanced filters
 if show_strong_only and 'Strong Prediction' in filtered_df.columns:
@@ -246,6 +248,88 @@ if show_btts_only and 'PredictionBTTS' in filtered_df.columns:
 # Over 2.5 filter (Over25YN == 'Y')
 if show_over25_only and 'Over25YN' in filtered_df.columns:
     filtered_df = filtered_df[filtered_df['Over25YN'].astype(str).str.strip().eq('Y')]
+
+
+# Acca filters (high-confidence shortlist)
+if show_acca_win:
+    # Acca Win: banker-style winner picks
+    required_cols = [
+        'Model Prediction', 'Confidence Pick', 'Strong Prediction',
+        'Home Win %', 'Draw %', 'Away Win %', 'Home xG', 'Away xG'
+    ]
+    if all(c in filtered_df.columns for c in required_cols):
+        def _norm_pick_acca(v):
+            if pd.isna(v):
+                return ""
+            s = str(v).strip()
+            if s.startswith("(L)"):
+                s = s.replace("(L)", "", 1).strip()
+            if s.startswith("(L) "):
+                s = s[4:].strip()
+            return s
+
+        model_pick = filtered_df['Model Prediction'].astype(str).str.strip()
+        conf_pick = filtered_df['Confidence Pick'].apply(_norm_pick_acca)
+        strong_pick = filtered_df['Strong Prediction'].astype(str).str.strip()
+
+        # Must be a team pick (not Draw) and model/confidence must match
+        is_team_pick = model_pick.ne("Draw") & model_pick.ne("") & filtered_df['Model Prediction'].notna()
+        match_ok = model_pick.eq(conf_pick) & conf_pick.ne("")
+
+        # Strong must be present (any non-empty)
+        strong_ok = strong_pick.ne("") & filtered_df['Strong Prediction'].notna()
+
+        # Determine whether the pick is home or away (if team columns are present)
+        if 'Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns:
+            is_home_pick = model_pick.eq(filtered_df['Home Team'].astype(str).str.strip())
+            is_away_pick = model_pick.eq(filtered_df['Away Team'].astype(str).str.strip())
+            pred_win_pct = filtered_df['Home Win %'].where(is_home_pick, filtered_df['Away Win %'].where(is_away_pick, filtered_df[['Home Win %','Away Win %']].max(axis=1)))
+            opp_xg = filtered_df['Away xG'].where(is_home_pick, filtered_df['Home xG'].where(is_away_pick, filtered_df[['Home xG','Away xG']].min(axis=1)))
+        else:
+            pred_win_pct = filtered_df[['Home Win %','Away Win %']].max(axis=1)
+            opp_xg = filtered_df[['Home xG','Away xG']].min(axis=1)
+
+        # Win margin: predicted win % minus second-highest among H/D/A
+        def _second_highest(row):
+            vals = sorted([row['Home Win %'], row['Draw %'], row['Away Win %']], reverse=True)
+            return vals[1] if len(vals) > 1 else 0.0
+
+        second_best = filtered_df.apply(_second_highest, axis=1)
+        win_margin = pred_win_pct - second_best
+
+        # Thresholds (tuned for new model scale)
+        filt = (
+            is_team_pick & match_ok & strong_ok &
+            (pred_win_pct >= 62.0) &
+            (win_margin >= 18.0) &
+            (opp_xg <= 1.05)
+        )
+        filtered_df = filtered_df[filt]
+    else:
+        filtered_df = filtered_df.iloc[0:0]
+
+if show_acca_btts:
+    # Acca BTTS: high-precision BTTS legs
+    required_cols = [
+        'PredictionBTTS', 'Home xG', 'Away xG',
+        'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG',
+        'Home Clean Sheet %', 'Away Clean Sheet %'
+    ]
+    if all(c in filtered_df.columns for c in required_cols):
+        min_xg = filtered_df[['Home xG','Away xG']].min(axis=1)
+        max_cs = pd.concat([filtered_df['Home Clean Sheet %'], filtered_df['Away Clean Sheet %']], axis=1).max(axis=1)
+
+        filt = (
+            filtered_df['PredictionBTTS'].astype(str).str.upper().str.strip().eq('Y') &
+            (min_xg >= 1.20) &
+            (filtered_df['Home Team GPG'] >= 1.20) & (filtered_df['Away Team GPG'] >= 1.20) &
+            (filtered_df['Home Team GCPG'] >= 1.05) & (filtered_df['Away Team GCPG'] >= 1.05) &
+            (max_cs <= 42.0)
+        )
+        filtered_df = filtered_df[filt]
+    else:
+        filtered_df = filtered_df.iloc[0:0]
+
 
 # ── Sidebar metrics ───────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
