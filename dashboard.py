@@ -215,6 +215,27 @@ st.sidebar.subheader("Advanced Filters")
 show_strong_only = st.sidebar.checkbox("Show Strong Predictions Only")
 show_matching_only = st.sidebar.checkbox("Show Model & Confidence Match Only")
 
+# Apply advanced filters
+if show_strong_only and 'Strong Prediction' in filtered_df.columns:
+    # Keep rows where Strong Prediction has a team/pick value
+    filtered_df = filtered_df[filtered_df['Strong Prediction'].astype(str).str.strip().ne('') & filtered_df['Strong Prediction'].notna()]
+
+if show_matching_only and 'Model Prediction' in filtered_df.columns and 'Confidence Pick' in filtered_df.columns:
+    def _norm_pick(v):
+        if pd.isna(v):
+            return ""
+        s = str(v).strip()
+        # Confidence picks sometimes have "(L) " prefix
+        if s.startswith("(L)"):
+            s = s.replace("(L)", "", 1).strip()
+        if s.startswith("(L) "):
+            s = s[4:].strip()
+        return s
+
+    model_norm = filtered_df['Model Prediction'].apply(_norm_pick)
+    conf_norm = filtered_df['Confidence Pick'].apply(_norm_pick)
+    filtered_df = filtered_df[model_norm.eq(conf_norm) & model_norm.ne("")]
+
 # ── Sidebar metrics ───────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
 st.sidebar.subheader("📊 Metrics")
