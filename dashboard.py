@@ -219,6 +219,9 @@ show_btts_only = st.sidebar.checkbox("Show BTTS = Y Only")
 show_over25_only = st.sidebar.checkbox("Show Over 2.5 = Y Only")
 show_acca_win = st.sidebar.checkbox("Acca Win")
 show_acca_btts = st.sidebar.checkbox("Acca BTTS")
+show_home_team_filter = st.sidebar.checkbox("Home team (Win%>=40, Form>=0, A_GCPG - H_GPG >= 0)")
+show_away_team_filter = st.sidebar.checkbox("Away team (Win%>=40, Form<=0, H_GCPG - A_GPG >= 0)")
+show_btts_simple_filter = st.sidebar.checkbox("BTTS (BTTS%>=40 and GPG/GCPG>=1.2 both teams)")
 
 # Apply advanced filters
 if show_strong_only and 'Strong Prediction' in filtered_df.columns:
@@ -376,6 +379,66 @@ if show_acca_btts:
             (filtered_df['Home Team GPG'] >= 1.20) & (filtered_df['Away Team GPG'] >= 1.20) &
             (filtered_df['Home Team GCPG'] >= 1.05) & (filtered_df['Away Team GCPG'] >= 1.05) &
             (max_cs <= 42.0)
+        )
+        filtered_df = filtered_df[filt]
+    else:
+        filtered_df = filtered_df.iloc[0:0]
+
+
+# ── Simple team/BTTS filters ───────────────────────────────────────────────────
+if show_home_team_filter:
+    required_cols = ['Home Win %', 'Away Team GCPG', 'Home Team GPG']
+    if all(c in filtered_df.columns for c in required_cols):
+        # Form condition: prefer Form Δ (Home form PPG - Away form PPG) if present, else derive from form PPG columns.
+        if 'Form Δ' in filtered_df.columns:
+            home_form_ok = pd.to_numeric(filtered_df['Form Δ'], errors='coerce').ge(0.0)
+        elif 'Home form PPG' in filtered_df.columns and 'Away form PPG' in filtered_df.columns:
+            home_form_ok = (pd.to_numeric(filtered_df['Home form PPG'], errors='coerce') - pd.to_numeric(filtered_df['Away form PPG'], errors='coerce')).ge(0.0)
+        else:
+            home_form_ok = pd.Series(True, index=filtered_df.index)
+
+        gpg_gate = (pd.to_numeric(filtered_df['Away Team GCPG'], errors='coerce') - pd.to_numeric(filtered_df['Home Team GPG'], errors='coerce')).ge(0.0)
+
+        filt = (
+            pd.to_numeric(filtered_df['Home Win %'], errors='coerce').ge(40.0) &
+            home_form_ok &
+            gpg_gate
+        )
+        filtered_df = filtered_df[filt]
+    else:
+        filtered_df = filtered_df.iloc[0:0]
+
+if show_away_team_filter:
+    required_cols = ['Away Win %', 'Home Team GCPG', 'Away Team GPG']
+    if all(c in filtered_df.columns for c in required_cols):
+        # Form condition: away should be >= home. Using Form Δ (home-away), that means Form Δ <= 0
+        if 'Form Δ' in filtered_df.columns:
+            away_form_ok = pd.to_numeric(filtered_df['Form Δ'], errors='coerce').le(0.0)
+        elif 'Home form PPG' in filtered_df.columns and 'Away form PPG' in filtered_df.columns:
+            away_form_ok = (pd.to_numeric(filtered_df['Away form PPG'], errors='coerce') - pd.to_numeric(filtered_df['Home form PPG'], errors='coerce')).ge(0.0)
+        else:
+            away_form_ok = pd.Series(True, index=filtered_df.index)
+
+        gpg_gate = (pd.to_numeric(filtered_df['Home Team GCPG'], errors='coerce') - pd.to_numeric(filtered_df['Away Team GPG'], errors='coerce')).ge(0.0)
+
+        filt = (
+            pd.to_numeric(filtered_df['Away Win %'], errors='coerce').ge(40.0) &
+            away_form_ok &
+            gpg_gate
+        )
+        filtered_df = filtered_df[filt]
+    else:
+        filtered_df = filtered_df.iloc[0:0]
+
+if show_btts_simple_filter:
+    required_cols = ['BTTS %', 'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG']
+    if all(c in filtered_df.columns for c in required_cols):
+        filt = (
+            pd.to_numeric(filtered_df['BTTS %'], errors='coerce').ge(40.0) &
+            pd.to_numeric(filtered_df['Home Team GPG'], errors='coerce').ge(1.2) &
+            pd.to_numeric(filtered_df['Away Team GPG'], errors='coerce').ge(1.2) &
+            pd.to_numeric(filtered_df['Home Team GCPG'], errors='coerce').ge(1.2) &
+            pd.to_numeric(filtered_df['Away Team GCPG'], errors='coerce').ge(1.2)
         )
         filtered_df = filtered_df[filt]
     else:
