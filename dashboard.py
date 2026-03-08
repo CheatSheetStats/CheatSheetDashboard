@@ -219,6 +219,10 @@ show_btts_only = st.sidebar.checkbox("Show BTTS = Y Only")
 show_over25_only = st.sidebar.checkbox("Show Over 2.5 = Y Only")
 show_acca_win = st.sidebar.checkbox("Acca Win")
 show_acca_btts = st.sidebar.checkbox("Acca BTTS")
+show_acca_bigch = st.sidebar.checkbox("Acca Win: Big Chances edge (≥0.8)")
+show_acca_touches = st.sidebar.checkbox("Acca Win: Touches edge (≥8)")
+show_acca_cs = st.sidebar.checkbox("Acca Win: Clean sheet edge (≥18%)")
+show_acca_win_strong56 = st.sidebar.checkbox("Acca Win STRONG (5–6 legs preset)")
 show_home_team_filter = st.sidebar.checkbox("Home team (Win%>=40, Form>=0, A_GCPG - H_GPG >= 0)")
 show_away_team_filter = st.sidebar.checkbox("Away team (Win%>=40, Form<=0, H_GCPG - A_GPG >= 0)")
 show_btts_simple_filter = st.sidebar.checkbox("BTTS (BTTS%>=40 and GPG/GCPG>=1.2 both teams)")
@@ -283,14 +287,23 @@ if show_acca_win:
         strong_ok = strong_pick.ne("") & filtered_df['Strong Prediction'].notna()
 
         # Determine whether the pick is home or away (if team columns are present)
-        if 'Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns:
+        need_matchup_cols = ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns)
+        if need_matchup_cols:
             is_home_pick = model_pick.eq(filtered_df['Home Team'].astype(str).str.strip())
             is_away_pick = model_pick.eq(filtered_df['Away Team'].astype(str).str.strip())
-            pred_win_pct = filtered_df['Home Win %'].where(is_home_pick, filtered_df['Away Win %'].where(is_away_pick, filtered_df[['Home Win %','Away Win %']].max(axis=1)))
-            opp_xg = filtered_df['Away xG'].where(is_home_pick, filtered_df['Home xG'].where(is_away_pick, filtered_df[['Home xG','Away xG']].min(axis=1)))
+            pred_win_pct = filtered_df['Home Win %'].where(
+                is_home_pick,
+                filtered_df['Away Win %'].where(is_away_pick, filtered_df[['Home Win %','Away Win %']].max(axis=1))
+            )
+            opp_xg = filtered_df['Away xG'].where(
+                is_home_pick,
+                filtered_df['Home xG'].where(is_away_pick, filtered_df[['Home xG','Away xG']].min(axis=1))
+            )
         else:
             pred_win_pct = filtered_df[['Home Win %','Away Win %']].max(axis=1)
             opp_xg = filtered_df[['Home xG','Away xG']].min(axis=1)
+            is_home_pick = pd.Series(False, index=filtered_df.index)
+            is_away_pick = pd.Series(False, index=filtered_df.index)
 
         # Win margin: predicted win % minus second-highest among H/D/A
         def _second_highest(row):
@@ -300,63 +313,90 @@ if show_acca_win:
         second_best = filtered_df.apply(_second_highest, axis=1)
         win_margin = pred_win_pct - second_best
 
-        
-        # --- Acca Win add-ons (only applied if the required columns exist) ---
-        # Big Chances advantage (predicted team minus opponent). This adds signal without just restating Win%.
+        # Preset: stronger settings for 5–6 leg accas
+        pred_win_floor = 62.0
+        win_margin_floor = 18.0
+        opp_xg_cap = 1.05
+        form_floor = 1.0
+        if show_acca_win_strong56:
+            pred_win_floor = 64.0
+            win_margin_floor = 22.0
+            opp_xg_cap = 1.00
+            form_floor = 1.2
+
+        # --- Existing add-ons (Big Chances adv + form sanity) from v5 (kept) ---
+        # Big Chances advantage (predicted team minus opponent), if columns exist
         big_home_cols = ['Home Big Chances', 'Home Team Big Chances', 'Home Big Chances per match']
         big_away_cols = ['Away Big Chances', 'Away Team Big Chances', 'Away Big Chances per match']
         home_big_col = next((c for c in big_home_cols if c in filtered_df.columns), None)
         away_big_col = next((c for c in big_away_cols if c in filtered_df.columns), None)
 
         big_adv_ok = pd.Series(True, index=filtered_df.index)
-        if home_big_col and away_big_col and ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns):
+        if home_big_col and away_big_col and need_matchup_cols:
             pred_big = filtered_df[home_big_col].where(is_home_pick, filtered_df[away_big_col].where(is_away_pick, pd.NA))
             opp_big  = filtered_df[away_big_col].where(is_home_pick, filtered_df[home_big_col].where(is_away_pick, pd.NA))
-            big_adv = (pred_big.astype(float) - opp_big.astype(float))
+            big_adv = (pd.to_numeric(pred_big, errors='coerce') - pd.to_numeric(opp_big, errors='coerce'))
             big_adv_ok = big_adv.ge(0.4)
-        # Form sanity check: keep predicted team out of very poor recent form (if available)
-        form_home_cols = ['Home form PPG', 'Home Form PPG', 'Home PtsGameLast5', 'Home Form Pts/Game']
-        form_away_cols = ['Away form PPG', 'Away Form PPG', 'Away PtsGameLast5', 'Away Form Pts/Game']
-        home_form_col = next((c for c in form_home_cols if c in filtered_df.columns), None)
-        away_form_col = next((c for c in form_away_cols if c in filtered_df.columns), None)
 
+        # Optional confirmers (tick in sidebar)
+        bigch_ok = pd.Series(True, index=filtered_df.index)
+        if show_acca_bigch:
+            if need_matchup_cols and 'Home Team Big Chances' in filtered_df.columns and 'Away Team Big Chances' in filtered_df.columns:
+                pred_big = filtered_df['Home Team Big Chances'].where(is_home_pick, filtered_df['Away Team Big Chances'].where(is_away_pick, pd.NA))
+                opp_big  = filtered_df['Away Team Big Chances'].where(is_home_pick, filtered_df['Home Team Big Chances'].where(is_away_pick, pd.NA))
+                bigch_ok = (pd.to_numeric(pred_big, errors='coerce') - pd.to_numeric(opp_big, errors='coerce')).ge(0.8)
+            else:
+                bigch_ok = pd.Series(False, index=filtered_df.index)
 
-        form_ok = pd.Series(True, index=filtered_df.index)
+        touches_ok = pd.Series(True, index=filtered_df.index)
+        if show_acca_touches:
+            if need_matchup_cols and 'Home Team Touches' in filtered_df.columns and 'Away Team Touches' in filtered_df.columns:
+                pred_t = filtered_df['Home Team Touches'].where(is_home_pick, filtered_df['Away Team Touches'].where(is_away_pick, pd.NA))
+                opp_t  = filtered_df['Away Team Touches'].where(is_home_pick, filtered_df['Home Team Touches'].where(is_away_pick, pd.NA))
+                touches_ok = (pd.to_numeric(pred_t, errors='coerce') - pd.to_numeric(opp_t, errors='coerce')).ge(8.0)
+            else:
+                touches_ok = pd.Series(False, index=filtered_df.index)
 
-        # Form sanity checks:
-        # 1) Predicted team must meet a minimum recent PPG floor (avoids backing teams in terrible form)
-        # 2) Predicted team must be in equal/better form than the opponent (avoids cases like -0.2 form delta)
+        cs_ok = pd.Series(True, index=filtered_df.index)
+        if show_acca_cs:
+            if need_matchup_cols and 'Home Clean Sheet %' in filtered_df.columns and 'Away Clean Sheet %' in filtered_df.columns:
+                pred_cs = filtered_df['Home Clean Sheet %'].where(is_home_pick, filtered_df['Away Clean Sheet %'].where(is_away_pick, pd.NA))
+                opp_cs  = filtered_df['Away Clean Sheet %'].where(is_home_pick, filtered_df['Home Clean Sheet %'].where(is_away_pick, pd.NA))
+                cs_ok = (pd.to_numeric(pred_cs, errors='coerce') - pd.to_numeric(opp_cs, errors='coerce')).ge(18.0)
+            else:
+                cs_ok = pd.Series(False, index=filtered_df.index)
+
+        # Form gates (only applied if we can compute them)
+        form_adv_ok = pd.Series(True, index=filtered_df.index)
         form_floor_ok = pd.Series(True, index=filtered_df.index)
-
-        # Prefer to use 'Form Δ' if present (it is Home form PPG - Away form PPG).
-        # For away picks we invert the sign so it's always "predicted team minus opponent".
-        if 'Form Δ' in filtered_df.columns and ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns):
+        if need_matchup_cols and 'Form Δ' in filtered_df.columns:
             form_delta = pd.to_numeric(filtered_df['Form Δ'], errors='coerce')
             pred_form_adv = form_delta.where(is_home_pick, (-form_delta).where(is_away_pick, pd.NA))
-            form_ok = pred_form_adv.astype(float).ge(0.0)
+            form_adv_ok = pred_form_adv.astype(float).ge(0.0)
+        if need_matchup_cols and 'Home form PPG' in filtered_df.columns and 'Away form PPG' in filtered_df.columns:
+            pred_form_ppg = pd.to_numeric(filtered_df['Home form PPG'], errors='coerce').where(
+                is_home_pick,
+                pd.to_numeric(filtered_df['Away form PPG'], errors='coerce').where(is_away_pick, pd.NA)
+            )
+            form_floor_ok = pred_form_ppg.astype(float).ge(form_floor)
 
-            # Minimum form PPG floor (use explicit form PPG columns if available)
-            if home_form_col and away_form_col:
-                pred_form = filtered_df[home_form_col].where(is_home_pick, filtered_df[away_form_col].where(is_away_pick, pd.NA))
-                form_floor_ok = pd.to_numeric(pred_form, errors='coerce').ge(1.0)
-        elif home_form_col and away_form_col and ('Home Team' in filtered_df.columns and 'Away Team' in filtered_df.columns):
-            pred_form = filtered_df[home_form_col].where(is_home_pick, filtered_df[away_form_col].where(is_away_pick, pd.NA))
-            opp_form  = filtered_df[away_form_col].where(is_home_pick, filtered_df[home_form_col].where(is_away_pick, pd.NA))
-            pred_form_adv = (pd.to_numeric(pred_form, errors='coerce') - pd.to_numeric(opp_form, errors='coerce'))
-            form_ok = pred_form_adv.astype(float).ge(0.0)
-            form_floor_ok = pd.to_numeric(pred_form, errors='coerce').ge(1.0)
+        # If using the STRONG 5–6 leg preset, require at least 2 of the 3 dominance confirmers.
+        dom2of3_ok = pd.Series(True, index=filtered_df.index)
+        if show_acca_win_strong56:
+            dom2of3_ok = (bigch_ok.astype(int) + touches_ok.astype(int) + cs_ok.astype(int)).ge(2)
 
-        # Combine both form requirements
-        form_ok = form_ok & form_floor_ok
-
-        # Thresholds (tuned for new model scale)
         filt = (
-            is_team_pick & match_ok & strong_ok &
-            (pred_win_pct >= 62.0) &
-            (win_margin >= 18.0) &
-            (opp_xg <= 1.05) &
-            big_adv_ok &
-            form_ok
+            is_team_pick & match_ok & strong_ok
+            & (pred_win_pct >= pred_win_floor)
+            & (win_margin >= win_margin_floor)
+            & (opp_xg <= opp_xg_cap)
+            & big_adv_ok
+            & bigch_ok
+            & touches_ok
+            & cs_ok
+            & form_adv_ok
+            & form_floor_ok
+            & dom2of3_ok
         )
         filtered_df = filtered_df[filt]
     else:
