@@ -201,7 +201,7 @@ else:
     start_date = end_date = None
 
 # Apply league and date filters
-filtered_df = df[df['Excel Document'].isin(selected_leagues)] if selected_leagues else df.iloc[0:0]
+filtered_df = df[df['Excel Document'].isin(selected_leagues)] if selected_leagues else df.copy()
 if start_date and end_date and 'Match Date' in df.columns:
     filtered_df = filtered_df[
         (filtered_df['Match Date'].dt.date >= start_date) &
