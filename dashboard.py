@@ -171,14 +171,18 @@ df = pd.read_csv(io.BytesIO(response))
 
 df['Match Date'] = pd.to_datetime(df['Match Date'], errors='coerce')
 
+# Add a default 'Excel Document' column if it doesn't exist in the CSV
+if 'Excel Document' not in df.columns:
+    df['Excel Document'] = 'All Leagues'
+
 # Add Over 2.5 Goals Y/N
 if 'Over 2.5 Goals %' in df.columns:
     df['Over25YN'] = df['Over 2.5 Goals %'].apply(lambda x: 'Y' if x >= 50 else 'N')
 # Add PPG and Form difference columns
-if 'Home PPG' in df.columns and 'Away PPG' in df.columns:
-    df['PPG Δ'] = df['Home PPG'] - df['Away PPG']
-if 'Home form PPG' in df.columns and 'Away form PPG' in df.columns:
-    df['Form Δ'] = df['Home form PPG'] - df['Away form PPG']
+if 'Home Team Overall Form PPG' in df.columns and 'Away Team Overall Form PPG' in df.columns:
+    df['PPG Δ'] = df['Home Team Overall Form PPG'] - df['Away Team Overall Form PPG']
+if 'Home Team Last 5 Form PPG' in df.columns and 'Away Team Last 5 Form PPG' in df.columns:
+    df['Form Δ'] = df['Home Team Last 5 Form PPG'] - df['Away Team Last 5 Form PPG']
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
@@ -300,14 +304,14 @@ else:
             'Home Win %', 'Draw %', 'Away Win %',
             'Model Prediction', 'Confidence Pick', 'Strong Prediction',
             'PredictionBTTS', 'Over25YN', 
-            'Home Clean Sheet %', 'Away Clean Sheet %',
+            'Home Team Clean Sheet %', 'Away Team Clean Sheet %',
             'PPG Δ', 'Form Δ',
             'Home Team GPG',
             'Away Team GPG',
             'Home Team GCPG',
             'Away Team GCPG',
-            'Home form PPG',
-            'Away form PPG',
+            'Home Team Overall Form PPG',
+            'Away Team Overall Form PPG',
             'Home xG', 'Away xG',
             'BTTS %', 'Over 2.5 Goals %'
         ]
@@ -327,16 +331,16 @@ else:
             'Away Win %': 'A%',
             'PPG Δ': 'PPG Δ',
             'Form Δ': 'Form Δ',
-            'Home form PPG': 'HF PPG',
-            'Away form PPG': 'AF PPG',
+            'Home Team Overall Form PPG': 'HF PPG',
+            'Away Team Overall Form PPG': 'AF PPG',
             'Home Team GPG': 'H GPG',
             'Away Team GPG': 'A GPG',
             'Home Team GCPG': 'H GCPG',
             'Away Team GCPG': 'A GCPG',
             'Home xG': 'H xG',
             'Away xG': 'A xG',
-            'Home Clean Sheet %': 'H CS%',
-            'Away Clean Sheet %': 'A CS%',
+            'Home Team Clean Sheet %': 'H CS%',
+            'Away Team Clean Sheet %': 'A CS%',
             'PredictionBTTS': 'BTTS',
             'BTTS %': 'BTTS%',
             'Over 2.5 Goals %': 'O2.5%',
