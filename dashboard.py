@@ -354,9 +354,9 @@ else:
         for pct_col in ['H%', 'D%', 'A%', 'BTTS%', 'O2.5%', 'H CS%', 'A CS%']:
             if pct_col in table_df.columns:
                 table_df[pct_col] = table_df[pct_col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
-        for num_col in ['PPG Δ', 'Form Δ', 'H xG', 'A xG']:
+        for num_col in ['PPG Δ', 'Form Δ', 'H xG', 'A xG', 'H GPG', 'A GPG', 'H GCPG', 'A GCPG', 'HF PPG', 'AF PPG']:
             if num_col in table_df.columns:
-                table_df[num_col] = table_df[num_col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
+                table_df[num_col] = table_df[num_col].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "-")
         for rank_col in ['H R', 'A R']:
             if rank_col in table_df.columns:
                 table_df[rank_col] = table_df[rank_col].apply(lambda x: f"{int(x)}" if pd.notna(x) else "-")
