@@ -218,81 +218,80 @@ else:
 
 # ── Smart filter ──────────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
-st.sidebar.subheader("🎯 Smart Filter")
+st.sidebar.subheader("🎯 Smart Filters")
 
 st.sidebar.markdown(
-    "<small>Filters fixtures where the model's favoured team meets multiple quality criteria "
-    "simultaneously. Each criterion narrows to games where season stats and form are most "
-    "reliable. Based on analysis of correct vs wrong predictions.</small>",
+    "<small>Select one or more filters — they stack together (AND logic). "
+    "Based on analysis of correct vs wrong predictions across 161 real fixtures.</small>",
     unsafe_allow_html=True
 )
 
-# ── PRESET filters ────────────────────────────────────────────────────────────
-PRESETS = {
-    "None — show all": None,
-
-    "🟢 Clean Sheet + Form  (~59% accuracy)": {
-        "_fav_cs":         (">=", 30),
-        "_fav_last5_ppg":  (">=", 1.5),
-        "Draw %":          ("<=", 22),
-        "_ppg_diff_abs":   (">=", 0.4),
-        "_desc": (
-            "Favoured team keeps 30%+ clean sheets · Last-5 PPG ≥ 1.5 · "
-            "Draw probability ≤ 22% · Quality gap ≥ 0.4 PPG. "
-            "The strongest single signal: teams that both score AND don't concede."
-        )
+# Each filter is a dict with:
+#   label       — checkbox label shown in sidebar
+#   desc        — shown in the info banner when active
+#   numeric     — list of (col, op, val) tuples to apply
+#   strong      — bool, filter to Strong Prediction rows only
+FILTER_DEFS = [
+    {
+        "key":    "clean_sheet_form",
+        "label":  "🟢 Clean Sheet + Form",
+        "desc":   "Fav. clean sheet ≥ 30% · Last-5 PPG ≥ 1.5 · Draw% ≤ 22 · PPG gap ≥ 0.4",
+        "numeric": [
+            ("_fav_cs",        ">=", 30),
+            ("_fav_last5_ppg", ">=", 1.5),
+            ("Draw %",         "<=", 22),
+            ("_ppg_diff_abs",  ">=", 0.4),
+        ],
+        "strong": False,
     },
-
-    "🔵 PPG Gap + Win% + Low Draw  (~59% accuracy)": {
-        "_ppg_diff_abs":  (">=", 0.6),
-        "_fav_win_pct":   (">=", 60),
-        "Draw %":         ("<=", 20),
-        "_desc": (
-            "Clear quality gap (≥ 0.6 PPG difference) · Win probability ≥ 60% · "
-            "Draw probability ≤ 20%. Targets fixtures where the gap in overall "
-            "season quality is large and a draw is genuinely unlikely."
-        )
+    {
+        "key":    "ppg_gap",
+        "label":  "🔵 PPG Gap + Win% + Low Draw",
+        "desc":   "PPG gap ≥ 0.6 · Win% ≥ 60 · Draw% ≤ 20",
+        "numeric": [
+            ("_ppg_diff_abs", ">=", 0.6),
+            ("_fav_win_pct",  ">=", 60),
+            ("Draw %",        "<=", 20),
+        ],
+        "strong": False,
     },
-
-    "🟡 In-Form + Quality Season  (~58% accuracy)": {
-        "_fav_season_ppg": (">=", 1.5),
-        "_fav_last5_ppg":  (">=", 1.5),
-        "_fav_cs":         (">=", 28),
-        "Draw %":          ("<=", 22),
-        "_ppg_diff_abs":   (">=", 0.3),
-        "_desc": (
-            "Season PPG ≥ 1.5 · Last-5 PPG ≥ 1.5 · Clean sheets ≥ 28% · "
-            "Draw probability ≤ 22% · PPG gap ≥ 0.3. Balanced filter: requires "
-            "both season-long quality AND recent form to align."
-        )
+    {
+        "key":    "in_form_quality",
+        "label":  "🟡 In-Form + Quality Season",
+        "desc":   "Season PPG ≥ 1.5 · Last-5 PPG ≥ 1.5 · Clean sheet ≥ 28% · Draw% ≤ 22 · PPG gap ≥ 0.3",
+        "numeric": [
+            ("_fav_season_ppg", ">=", 1.5),
+            ("_fav_last5_ppg",  ">=", 1.5),
+            ("_fav_cs",         ">=", 28),
+            ("Draw %",          "<=", 22),
+            ("_ppg_diff_abs",   ">=", 0.3),
+        ],
+        "strong": False,
     },
-
-    "⭐ Strong Predictions Only": {
-        "_strong": True,
-        "_desc": (
-            "Only fixtures where the model's Strong Prediction gate fired. "
-            "These passed a multi-dimensional check across GPG, shots, big chances, "
-            "PPG, rank, and goal ratio differentials simultaneously."
-        )
+    {
+        "key":    "strong_only",
+        "label":  "⭐ Strong Predictions Only",
+        "desc":   "Only fixtures where the Strong Prediction gate fired",
+        "numeric": [],
+        "strong": True,
     },
-}
+]
 
-selected_preset = st.sidebar.selectbox(
-    "Preset filter",
-    list(PRESETS.keys()),
-    index=0,
-)
+# Render as checkboxes — user can tick any combination
+active_filters = []
+for f in FILTER_DEFS:
+    if st.sidebar.checkbox(f["label"], value=False, key=f"chk_{f['key']}"):
+        active_filters.append(f)
 
 # ── Custom sliders ─────────────────────────────────────────────────────────────
-st.sidebar.markdown("**Or set your own thresholds:**")
-
-with st.sidebar.expander("Custom thresholds", expanded=False):
-    custom_win_pct    = st.slider("Min win probability (%)",       0,  100, 50, 5)
-    custom_draw_pct   = st.slider("Max draw probability (%)",      0,  50,  30, 1)
-    custom_ppg_diff   = st.slider("Min PPG quality gap",           0.0, 2.0, 0.0, 0.1)
-    custom_season_ppg = st.slider("Min favoured team season PPG",  0.0, 3.0, 0.0, 0.1)
-    custom_last5_ppg  = st.slider("Min favoured team last-5 PPG",  0.0, 3.0, 0.0, 0.1)
-    custom_cs         = st.slider("Min favoured team clean sheet %", 0, 70, 0, 5)
+st.sidebar.markdown("**Custom thresholds:**")
+with st.sidebar.expander("Set your own thresholds", expanded=False):
+    custom_win_pct    = st.slider("Min win probability (%)",          0,   100, 50,  5)
+    custom_draw_pct   = st.slider("Max draw probability (%)",         0,   50,  30,  1)
+    custom_ppg_diff   = st.slider("Min PPG quality gap",              0.0, 2.0, 0.0, 0.1)
+    custom_season_ppg = st.slider("Min favoured team season PPG",     0.0, 3.0, 0.0, 0.1)
+    custom_last5_ppg  = st.slider("Min favoured team last-5 PPG",     0.0, 3.0, 0.0, 0.1)
+    custom_cs         = st.slider("Min favoured team clean sheet %",  0,   70,  0,   5)
     use_custom        = st.checkbox("Apply custom thresholds", value=False)
 
 # ── Apply league and date filters first ───────────────────────────────────────
@@ -303,19 +302,44 @@ if start_date and end_date and 'Match Date' in df.columns:
         (filtered_df['Match Date'].dt.date <= end_date)
     ]
 
-# ── Apply smart filter ────────────────────────────────────────────────────────
-smart_filter_active = False
-smart_filter_desc   = ""
+# ── Apply smart filters (stack all active ones) ───────────────────────────────
 pre_filter_count    = len(filtered_df)
+smart_filter_active = False
+active_descs        = []
 
+# Build a combined mask across all ticked checkboxes (AND logic)
+combined_mask = pd.Series(True, index=filtered_df.index)
+
+for f in active_filters:
+    smart_filter_active = True
+    active_descs.append(f["desc"])
+
+    # Strong prediction gate
+    if f["strong"]:
+        combined_mask &= (
+            filtered_df['Strong Prediction'].notna() &
+            (filtered_df['Strong Prediction'].astype(str).str.strip() != "") &
+            (filtered_df['Strong Prediction'].astype(str).str.strip() != "nan")
+        )
+
+    # Numeric criteria
+    for col, op, val in f["numeric"]:
+        if col not in filtered_df.columns:
+            continue
+        if op == ">=":
+            combined_mask &= filtered_df[col] >= val
+        elif op == "<=":
+            combined_mask &= filtered_df[col] <= val
+
+# Custom threshold mask
 if use_custom:
     smart_filter_active = True
-    smart_filter_desc   = (
+    active_descs.append(
         f"Win% ≥ {custom_win_pct} · Draw% ≤ {custom_draw_pct} · "
         f"PPG gap ≥ {custom_ppg_diff} · Season PPG ≥ {custom_season_ppg} · "
         f"Last-5 PPG ≥ {custom_last5_ppg} · Clean sheet ≥ {custom_cs}%"
     )
-    mask = (
+    combined_mask &= (
         (filtered_df['_fav_win_pct']    >= custom_win_pct)    &
         (filtered_df['Draw %']          <= custom_draw_pct)   &
         (filtered_df['_ppg_diff_abs']   >= custom_ppg_diff)   &
@@ -323,30 +347,11 @@ if use_custom:
         (filtered_df['_fav_last5_ppg']  >= custom_last5_ppg)  &
         (filtered_df['_fav_cs']         >= custom_cs)
     )
-    filtered_df = filtered_df[mask]
 
-elif selected_preset != "None — show all":
-    criteria = PRESETS[selected_preset]
-    smart_filter_active = True
-    smart_filter_desc   = criteria.get("_desc", "")
-    mask = pd.Series(True, index=filtered_df.index)
+if smart_filter_active:
+    filtered_df = filtered_df[combined_mask]
 
-    # Strong prediction filter
-    if criteria.get("_strong"):
-        mask &= filtered_df['Strong Prediction'].notna() & (filtered_df['Strong Prediction'] != "")
-
-    # Numeric filters
-    for col, (op, val) in criteria.items():
-        if col.startswith("_desc") or col == "_strong":
-            continue
-        if col not in filtered_df.columns:
-            continue
-        if op == ">=":
-            mask &= filtered_df[col] >= val
-        elif op == "<=":
-            mask &= filtered_df[col] <= val
-
-    filtered_df = filtered_df[mask]
+smart_filter_desc = " · ".join(active_descs)
 
 # ── Sidebar metrics ───────────────────────────────────────────────────────────
 st.sidebar.markdown("---")
