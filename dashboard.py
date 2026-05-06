@@ -43,14 +43,14 @@ if 'Home Team Overall Form PPG' in df.columns and 'Away Team Overall Form PPG' i
 if 'Home Team Last 5 Form PPG' in df.columns and 'Away Team Last 5 Form PPG' in df.columns:
     df['Form Δ'] = df['Home Team Last 5 Form PPG'] - df['Away Team Last 5 Form PPG']
 
-# ✅ NEW: Form Drift
+# Add Form Drift (REVERSED: Overall - Last 5)
 if 'Home Team Last 5 Form PPG' in df.columns and 'Home Team Overall Form PPG' in df.columns:
-    df['Home Form Drift'] = df['Home Team Last 5 Form PPG'] - df['Home Team Overall Form PPG']
+    df['Home Form Drift'] = df['Home Team Overall Form PPG'] - df['Home Team Last 5 Form PPG']
 
 if 'Away Team Last 5 Form PPG' in df.columns and 'Away Team Overall Form PPG' in df.columns:
-    df['Away Form Drift'] = df['Away Team Last 5 Form PPG'] - df['Away Team Overall Form PPG']
+    df['Away Form Drift'] = df['Away Team Overall Form PPG'] - df['Away Team Last 5 Form PPG']
 
-# ✅ NEW: Drift Difference
+# Drift difference (momentum edge)
 if 'Home Form Drift' in df.columns and 'Away Form Drift' in df.columns:
     df['Drift Δ'] = df['Home Form Drift'] - df['Away Form Drift']
 
