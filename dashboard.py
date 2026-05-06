@@ -17,6 +17,7 @@ file_path = os.environ.get("FILE_PATH")
 
 response = supabase_client.storage.from_(bucket_name).download(file_path)
 
+
 # Page config
 st.set_page_config(
     page_title="Football Prediction Dashboard",
@@ -24,6 +25,16 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Enhanced Mobile-Responsive CSS
+st.markdown("""
+<style>
+.main { padding: 0rem 1rem; }
+.metric-card { background-color: #f0f2f6; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #1f77b4; }
+[data-testid="stDataFrame"] th { text-align: center !important; }
+[data-testid="stDataFrame"] td { text-align: center !important; }
+</style>
+""", unsafe_allow_html=True)
 
 st.title("⚽ Football Prediction Model Dashboard")
 st.markdown("---")
@@ -43,39 +54,31 @@ if 'Home Team Overall Form PPG' in df.columns and 'Away Team Overall Form PPG' i
 if 'Home Team Last 5 Form PPG' in df.columns and 'Away Team Last 5 Form PPG' in df.columns:
     df['Form Δ'] = df['Home Team Last 5 Form PPG'] - df['Away Team Last 5 Form PPG']
 
-# Add Form Drift (REVERSED: Overall - Last 5)
+# ── Form Drift (ADDED, REVERSED) ─────────────────────────────
 if 'Home Team Last 5 Form PPG' in df.columns and 'Home Team Overall Form PPG' in df.columns:
     df['Home Form Drift'] = df['Home Team Overall Form PPG'] - df['Home Team Last 5 Form PPG']
 
 if 'Away Team Last 5 Form PPG' in df.columns and 'Away Team Overall Form PPG' in df.columns:
     df['Away Form Drift'] = df['Away Team Overall Form PPG'] - df['Away Team Last 5 Form PPG']
 
-# Drift difference (momentum edge)
 if 'Home Form Drift' in df.columns and 'Away Form Drift' in df.columns:
     df['Drift Δ'] = df['Home Form Drift'] - df['Away Form Drift']
 
-# Simple table view
+# ── TABLE VIEW (original structure preserved) ─────────────────────────────
 st.subheader("Matches")
 
 display_columns = [
-    'Match Date',
-    'Home Team',
-    'Away Team',
-    'Home Win %',
-    'Draw %',
-    'Away Win %',
-    'PPG Δ',
-    'Form Δ',
-    'Home Form Drift',
-    'Away Form Drift',
-    'Drift Δ'
+    'Match Date', 'Home Team', 'Away Team',
+    'Home Win %', 'Draw %', 'Away Win %',
+    'PPG Δ', 'Form Δ',
+    'Home Form Drift', 'Away Form Drift', 'Drift Δ'
 ]
 
 available_columns = [col for col in display_columns if col in df.columns]
-
 table_df = df[available_columns].copy()
 
-# Rename for UI
+# Rename
+
 table_df.rename(columns={
     'Match Date': 'Date',
     'Home Team': 'Home',
@@ -83,11 +86,8 @@ table_df.rename(columns={
     'Home Win %': 'H%',
     'Draw %': 'D%',
     'Away Win %': 'A%',
-    'PPG Δ': 'PPG Δ',
-    'Form Δ': 'Form Δ',
     'Home Form Drift': 'H Drift',
-    'Away Form Drift': 'A Drift',
-    'Drift Δ': 'Drift Δ'
+    'Away Form Drift': 'A Drift'
 }, inplace=True)
 
 # Formatting
