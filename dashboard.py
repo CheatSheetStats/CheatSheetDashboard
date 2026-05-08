@@ -71,6 +71,69 @@ st.markdown("""
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
 }
+
+/* ── Column section separators ──────────────────────────────────────────────
+   Streamlit renders st.dataframe as a glide-data-grid canvas (so we can't
+   target columns directly via CSS), but it exposes a row container we can
+   style. Instead we use the standard fallback: HTML table rendering, where
+   each cell can be targeted by nth-child. We force the dataframe to use
+   the HTML renderer below by tagging the parent with .bordered-table.
+   The thick borders mark transitions between the six logical sections of
+   the table (prediction → rank → season → form → venue → win/lose%).
+*/
+.bordered-table table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12px;
+}
+.bordered-table thead th {
+    background: #2a2d36;
+    color: #fff;
+    text-align: center;
+    padding: 6px 8px;
+    border-bottom: 2px solid #555;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    white-space: nowrap;
+}
+.bordered-table tbody td {
+    text-align: center;
+    padding: 4px 6px;
+    border-bottom: 1px solid #333;
+    white-space: nowrap;
+}
+.bordered-table tbody tr:nth-child(even) td { background: #1a1c22; }
+.bordered-table tbody tr:hover td           { background: #2c3038; }
+
+/* Thick separators between the six sections.
+   Column indices are 1-based and reflect the display_columns order.
+   Sections (after rename):
+     1.  Date | League | Home | Away
+     2.  H% | D% | A% | Pick | Strong | Conf | Draw?
+     3.  H Rank | A Rank
+     4.  H PPG | A PPG | H GPG | A GPG | H GCPG | A GCPG
+     5.  H Form | A Form | H Δ | A Δ
+     6.  H @Home | A @Away
+     7.  H Win% | A Win% | H Lose% | A Lose%
+     8.  BTTS%, BTTS, BTTS!, Lg BTTS, O2.5%, O2.5, O2.5!, Lg O2.5
+*/
+.bordered-table th:nth-child(4),    /* end of section 1 (Away)        */
+.bordered-table td:nth-child(4),
+.bordered-table th:nth-child(11),   /* end of section 2 (Draw?)       */
+.bordered-table td:nth-child(11),
+.bordered-table th:nth-child(13),   /* end of section 3 (A Rank)      */
+.bordered-table td:nth-child(13),
+.bordered-table th:nth-child(19),   /* end of section 4 (A GCPG)      */
+.bordered-table td:nth-child(19),
+.bordered-table th:nth-child(23),   /* end of section 5 (A Δ)         */
+.bordered-table td:nth-child(23),
+.bordered-table th:nth-child(25),   /* end of section 6 (A @Away)     */
+.bordered-table td:nth-child(25),
+.bordered-table th:nth-child(29),   /* end of section 7 (A Lose%)     */
+.bordered-table td:nth-child(29) {
+    border-right: 3px solid #6c7280 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -453,7 +516,15 @@ else:
             lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else "-"
         )
 
-    st.dataframe(table_df, use_container_width=True, hide_index=True, height=1200)
+    # Render with HTML so the per-column section-separator CSS can take effect.
+    # Wrapped in a scrollable container so the wide table stays usable on
+    # small screens.
+    html_table = table_df.to_html(index=False, escape=False, classes="bordered-table-inner")
+    st.markdown(
+        '<div class="bordered-table" style="max-height: 1100px; overflow: auto; '
+        'border: 1px solid #333; border-radius: 4px;">' + html_table + '</div>',
+        unsafe_allow_html=True,
+    )
 
     # ── Export ─────────────────────────────────────────────────────────────────
     st.subheader("💾 Export Filtered Data")
