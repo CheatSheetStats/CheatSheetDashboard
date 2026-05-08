@@ -171,6 +171,7 @@ with st.expander("📖 Key — what the columns and filters mean"):
 **🏟️ Venue**
 - **H @Home** — Home team's PPG when playing at home
 - **A @Away** — Away team's PPG when playing away
+- **H @H Δ / A @A Δ** — Venue drift: venue PPG minus season PPG. Positive = team performs better than usual at this venue, negative = worse
 
 **🎲 Win / Lose %** *(use these to filter accumulator picks. The four columns are paired by what supports each side: H Win% + A Lose% support backing the home team; H Lose% + A Win% support backing the away team)*
 - **H Win% / A Win%** — % of season matches won
@@ -485,6 +486,7 @@ else:
         'Home Form Drift',    'Away Form Drift',
         # 6. Venue
         'Home PPG (At Home)', 'Away PPG (Away)',
+        'Home Venue Drift',   'Away Venue Drift',
         # 7. Win / Lose % — paired by team, then border, then opposite pairing
         'Home Win % (Season)',  'Away Lose % (Season)',
         'Home Lose % (Season)', 'Away Win % (Season)',
@@ -524,6 +526,8 @@ else:
         'Away Form Drift':        'A Δ',
         'Home PPG (At Home)':     'H @Home',
         'Away PPG (Away)':        'A @Away',
+        'Home Venue Drift':       'H @H Δ',
+        'Away Venue Drift':       'A @A Δ',
         'Home Win % (Season)':    'H Win%',
         'Away Win % (Season)':    'A Win%',
         'Home Lose % (Season)':   'H Lose%',
@@ -547,7 +551,7 @@ else:
             table_df[c] = table_df[c].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
 
     # Form drift gets a +/- sign so direction is obvious at a glance
-    for c in ['H Δ', 'A Δ']:
+    for c in ['H Δ', 'A Δ', 'H @H Δ', 'A @A Δ']:
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(lambda x: f"{x:+.2f}" if pd.notna(x) else "-")
 
@@ -620,17 +624,17 @@ else:
         table#bordered-sortable tbody tr:nth-child(even) td { background: #1a1c22; }
         table#bordered-sortable tbody tr:hover td           { background: #2c3038; }
 
-        /* Section separators — match the new column groups.
+        /* Section separators — match the column groups.
            Indices reflect the display order:
              1.  Date | League | Home | Away              ← border after 4
              2.  H Rank | A Rank                          ← border after 6
              3.  H% | D% | A%                             ← border after 9
              4.  Pick | Strong | Conf                     ← border after 12
              5.  H/A PPG | H/A GPG | H/A GCPG             ← border after 18
-             6.  H/A Form | H Δ | A Δ                     ← border after 22
-             7.  H @Home | A @Away                        ← border after 24
-             8.  H Win% | A Lose%                         ← border after 26
-             9.  H Lose% | A Win%                         ← border after 28
+             6.  H Form | A Form | H Δ | A Δ              ← border after 22
+             7.  H @Home | A @Away | H @H Δ | A @A Δ      ← border after 26
+             8.  H Win% | A Lose%                         ← border after 28
+             9.  H Lose% | A Win%                         ← border after 30
             10.  BTTS% | O2.5%                            (no trailing border)
         */
         table#bordered-sortable th:nth-child(4),
@@ -645,12 +649,12 @@ else:
         table#bordered-sortable td:nth-child(18),
         table#bordered-sortable th:nth-child(22),
         table#bordered-sortable td:nth-child(22),
-        table#bordered-sortable th:nth-child(24),
-        table#bordered-sortable td:nth-child(24),
         table#bordered-sortable th:nth-child(26),
         table#bordered-sortable td:nth-child(26),
         table#bordered-sortable th:nth-child(28),
-        table#bordered-sortable td:nth-child(28) {
+        table#bordered-sortable td:nth-child(28),
+        table#bordered-sortable th:nth-child(30),
+        table#bordered-sortable td:nth-child(30) {
             border-right: 3px solid #6c7280 !important;
         }
     </style>
