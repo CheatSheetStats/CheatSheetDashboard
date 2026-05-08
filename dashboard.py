@@ -147,15 +147,17 @@ with st.expander("📖 Key — what the columns and filters mean"):
     st.markdown("""
 **Column reference** *(click any column header in the table to sort by it)*
 
-**🎯 Who wins?**
+**📊 Match identity**
+- **Home / Away** — the two teams
+- **H Rank / A Rank** — current league rank for each team
+
+**🎯 Probabilities**
 - **H% / D% / A%** — model's probability for Home win, Draw, Away win
-- **Pick** — the model's headline prediction (highest probability)
+
+**🔮 Prediction**
+- **Pick** — the model's headline prediction (highest probability, or "Draw" if Draw Gate is on)
 - **Strong** — name in this column means the Strong Prediction gate fired (high-conviction pick that confirms across stats)
 - **Conf** — confidence as stars: ★ coin flip · ★★ slight lean · ★★★ clear favourite · ★★★★ strong · ★★★★★ very strong
-- **Draw?** — "Y" means the Draw Gate flipped this match to Draw because xG and probability are very tight (only fires when `ENABLE_DRAW_GATE = True` in the model)
-
-**📊 League position**
-- **H Rank / A Rank** — current league rank for each team
 
 **📈 Season structure** *(how the team has performed all season)*
 - **H PPG / A PPG** — Points per game
@@ -170,16 +172,14 @@ with st.expander("📖 Key — what the columns and filters mean"):
 - **H @Home** — Home team's PPG when playing at home
 - **A @Away** — Away team's PPG when playing away
 
-**🎲 Win / Lose %** *(use these to filter accumulator picks)*
+**🎲 Win / Lose %** *(use these to filter accumulator picks. The four columns are paired by what supports each side: H Win% + A Lose% support backing the home team; H Lose% + A Win% support backing the away team)*
 - **H Win% / A Win%** — % of season matches won
 - **H Lose% / A Lose%** — % of season matches lost
 
-**⚽ BTTS / Over 2.5**
+**⚽ Goals markets**
 - **BTTS%** — model probability both teams score
-- **BTTS** — Y/N flag, fires when match BTTS% is meaningfully above the league norm
-- **BTTS!** — *Confident* BTTS Y, fires when BTTS% ≥ 60% absolute (sharper accumulator signal)
-- **Lg BTTS** — League's historical BTTS rate (5-season average) for context
-- **O2.5%, O2.5, O2.5!, Lg O2.5** — Same logic for Over 2.5 goals
+- **O2.5%** — model probability of 3+ total goals
+*(The Y/N flags are now in the smart filters — see below)*
 
 ---
 
@@ -469,27 +469,27 @@ else:
 
     display_columns = [
         'Match Date', 'Excel Document',
-        # 1. Who wins?
+        # 1. Match identity (now includes ranks)
         'Home Team', 'Away Team',
-        'Home Win %', 'Draw %', 'Away Win %',
-        'Model Prediction', 'Strong Prediction', 'Confidence Score', 'Draw Gate Fired',
-        # 2. Rank
         'Home Team Rank', 'Away Team Rank',
-        # 3. Season structure
+        # 2. Probabilities
+        'Home Win %', 'Draw %', 'Away Win %',
+        # 3. Prediction (border before this section)
+        'Model Prediction', 'Strong Prediction', 'Confidence Score',
+        # 4. Season structure
         'Home PPG (Season)',  'Away PPG (Season)',
         'Home Team GPG',      'Away Team GPG',
         'Home Team GCPG',     'Away Team GCPG',
-        # 4. Recent form
+        # 5. Recent form
         'Home PPG (Last 5)',  'Away PPG (Last 5)',
         'Home Form Drift',    'Away Form Drift',
-        # 5. Venue
+        # 6. Venue
         'Home PPG (At Home)', 'Away PPG (Away)',
-        # 6. Win / Lose % — for accumulator filtering
-        'Home Win % (Season)',  'Away Win % (Season)',
-        'Home Lose % (Season)', 'Away Lose % (Season)',
-        # 7. BTTS / Over 2.5 — with league base rate context AND confident flags
-        'BTTS %', 'PredictionBTTS', 'Confident BTTS Y', 'League BTTS Rate',
-        'Over 2.5 Goals %', 'Over25YN', 'Confident O2.5 Y', 'League O2.5 Rate',
+        # 7. Win / Lose % — paired by team, then border, then opposite pairing
+        'Home Win % (Season)',  'Away Lose % (Season)',
+        'Home Lose % (Season)', 'Away Win % (Season)',
+        # 8. BTTS / Over 2.5 (just the percentages — Y/N flags moved to filters)
+        'BTTS %', 'Over 2.5 Goals %',
     ]
 
     available_columns = [c for c in display_columns if c in filtered_df.columns]
@@ -512,7 +512,6 @@ else:
         'Model Prediction':       'Pick',
         'Strong Prediction':      'Strong',
         'Confidence Score':       'Conf',
-        'Draw Gate Fired':        'Draw?',
         'Home PPG (Season)':      'H PPG',
         'Away PPG (Season)':      'A PPG',
         'Home Team GPG':          'H GPG',
@@ -530,13 +529,7 @@ else:
         'Home Lose % (Season)':   'H Lose%',
         'Away Lose % (Season)':   'A Lose%',
         'BTTS %':                 'BTTS%',
-        'PredictionBTTS':         'BTTS',
-        'Confident BTTS Y':       'BTTS!',
-        'League BTTS Rate':       'Lg BTTS',
         'Over 2.5 Goals %':       'O2.5%',
-        'Over25YN':               'O2.5',
-        'Confident O2.5 Y':       'O2.5!',
-        'League O2.5 Rate':       'Lg O2.5',
     }, inplace=True)
 
     # ── Formatting ─────────────────────────────────────────────────────────────
@@ -545,11 +538,6 @@ else:
     for c in pct_cols:
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
-
-    # League base rates display as integer percentage
-    for c in ['Lg BTTS', 'Lg O2.5']:
-        if c in table_df.columns:
-            table_df[c] = table_df[c].apply(lambda x: f"{int(x)}%" if pd.notna(x) else "-")
 
     two_dp_cols = ['H GPG', 'A GPG', 'H GCPG', 'A GCPG',
                    'H PPG', 'A PPG', 'H Form', 'A Form',
@@ -632,21 +620,37 @@ else:
         table#bordered-sortable tbody tr:nth-child(even) td { background: #1a1c22; }
         table#bordered-sortable tbody tr:hover td           { background: #2c3038; }
 
-        /* Section separators — match the six logical column groups */
+        /* Section separators — match the new column groups.
+           Indices reflect the display order:
+             1.  Date | League | Home | Away              ← border after 4
+             2.  H Rank | A Rank                          ← border after 6
+             3.  H% | D% | A%                             ← border after 9
+             4.  Pick | Strong | Conf                     ← border after 12
+             5.  H/A PPG | H/A GPG | H/A GCPG             ← border after 18
+             6.  H/A Form | H Δ | A Δ                     ← border after 22
+             7.  H @Home | A @Away                        ← border after 24
+             8.  H Win% | A Lose%                         ← border after 26
+             9.  H Lose% | A Win%                         ← border after 28
+            10.  BTTS% | O2.5%                            (no trailing border)
+        */
         table#bordered-sortable th:nth-child(4),
         table#bordered-sortable td:nth-child(4),
-        table#bordered-sortable th:nth-child(11),
-        table#bordered-sortable td:nth-child(11),
-        table#bordered-sortable th:nth-child(13),
-        table#bordered-sortable td:nth-child(13),
-        table#bordered-sortable th:nth-child(19),
-        table#bordered-sortable td:nth-child(19),
-        table#bordered-sortable th:nth-child(23),
-        table#bordered-sortable td:nth-child(23),
-        table#bordered-sortable th:nth-child(25),
-        table#bordered-sortable td:nth-child(25),
-        table#bordered-sortable th:nth-child(29),
-        table#bordered-sortable td:nth-child(29) {
+        table#bordered-sortable th:nth-child(6),
+        table#bordered-sortable td:nth-child(6),
+        table#bordered-sortable th:nth-child(9),
+        table#bordered-sortable td:nth-child(9),
+        table#bordered-sortable th:nth-child(12),
+        table#bordered-sortable td:nth-child(12),
+        table#bordered-sortable th:nth-child(18),
+        table#bordered-sortable td:nth-child(18),
+        table#bordered-sortable th:nth-child(22),
+        table#bordered-sortable td:nth-child(22),
+        table#bordered-sortable th:nth-child(24),
+        table#bordered-sortable td:nth-child(24),
+        table#bordered-sortable th:nth-child(26),
+        table#bordered-sortable td:nth-child(26),
+        table#bordered-sortable th:nth-child(28),
+        table#bordered-sortable td:nth-child(28) {
             border-right: 3px solid #6c7280 !important;
         }
     </style>
