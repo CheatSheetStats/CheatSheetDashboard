@@ -517,12 +517,93 @@ else:
         )
 
     # Render with HTML so the per-column section-separator CSS can take effect.
-    # Wrapped in a scrollable container so the wide table stays usable on
-    # small screens.
+    # We add a tiny vanilla-JS sort handler so the column headers are clickable
+    # for sorting (same UX as st.dataframe), while keeping the per-column
+    # section borders.
     html_table = table_df.to_html(index=False, escape=False, classes="bordered-table-inner")
+
+    # Mark the table with a unique id so the JS can find it.
+    html_table = html_table.replace(
+        '<table border="1" class="dataframe bordered-table-inner">',
+        '<table id="bordered-sortable" class="dataframe bordered-table-inner">',
+        1,
+    )
+
+    sort_script = """
+    <script>
+    (function() {
+        const table = document.getElementById('bordered-sortable');
+        if (!table) return;
+
+        const headers = table.querySelectorAll('thead th');
+        let sortState = { col: null, dir: 1 };
+
+        // Detect numeric vs text per cell.
+        // Strips %, commas, ★ characters and tries to parse as float.
+        function cellSortValue(cell) {
+            const raw = cell.textContent.trim();
+            if (raw === '-' || raw === '' || raw === 'nan' || raw === 'None') {
+                return { num: null, str: '' };
+            }
+            // Star ratings — count the stars
+            if (raw.includes('★')) {
+                return { num: (raw.match(/★/g) || []).length, str: raw };
+            }
+            // Strip % sign and try numeric
+            const cleaned = raw.replace(/[%,+]/g, '');
+            const num = parseFloat(cleaned);
+            if (!isNaN(num)) {
+                return { num: num, str: raw };
+            }
+            return { num: null, str: raw.toLowerCase() };
+        }
+
+        headers.forEach((th, idx) => {
+            th.style.cursor = 'pointer';
+            th.style.userSelect = 'none';
+            const originalText = th.textContent;
+            th.addEventListener('click', () => {
+                const dir = (sortState.col === idx) ? -sortState.dir : 1;
+                sortState = { col: idx, dir: dir };
+
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+
+                rows.sort((a, b) => {
+                    const av = cellSortValue(a.cells[idx]);
+                    const bv = cellSortValue(b.cells[idx]);
+                    // Nulls always sink to the bottom regardless of direction
+                    if (av.num === null && av.str === '' && (bv.num !== null || bv.str !== '')) return 1;
+                    if (bv.num === null && bv.str === '' && (av.num !== null || av.str !== '')) return -1;
+                    if (av.num !== null && bv.num !== null) {
+                        return (av.num - bv.num) * dir;
+                    }
+                    return av.str.localeCompare(bv.str) * dir;
+                });
+
+                rows.forEach(r => tbody.appendChild(r));
+
+                // Update header arrows
+                headers.forEach((h, i) => {
+                    let txt = h.dataset.originalText || h.textContent;
+                    txt = txt.replace(/ [▲▼]$/, '');
+                    h.dataset.originalText = txt;
+                    if (i === idx) {
+                        h.textContent = txt + (dir > 0 ? ' ▲' : ' ▼');
+                    } else {
+                        h.textContent = txt;
+                    }
+                });
+            });
+        });
+    })();
+    </script>
+    """
+
     st.markdown(
         '<div class="bordered-table" style="max-height: 1100px; overflow: auto; '
-        'border: 1px solid #333; border-radius: 4px;">' + html_table + '</div>',
+        'border: 1px solid #333; border-radius: 4px;">' + html_table + '</div>'
+        + sort_script,
         unsafe_allow_html=True,
     )
 
