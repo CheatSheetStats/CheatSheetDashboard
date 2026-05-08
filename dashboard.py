@@ -73,16 +73,38 @@ st.markdown("""
     -webkit-overflow-scrolling: touch;
 }
 
-/* Sticky filter strip — keeps controls visible while scrolling the table */
+/* Sticky filter strip — keeps controls visible while scrolling the table.
+   The 3.5rem offset accounts for Streamlit's outer header bar so the
+   title doesn't clip when scrolling. */
 .filter-strip {
     position: sticky;
-    top: 0;
+    top: 3.5rem;
     background: #0e1117;
     z-index: 100;
     padding: 8px 0;
     border-bottom: 1px solid #333;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
+
+/* Vertical scrollable league panel — replaces the wide horizontal pill list.
+   Sits in the right column of the filter strip. */
+.league-panel {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 6px 8px;
+    background: #1a1c22;
+    font-size: 0.82rem;
+}
+.league-panel label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0;
+    cursor: pointer;
+}
+.league-panel label:hover { background: #2c3038; }
 
 /* Trim Streamlit's default top padding so the title sits closer to the top */
 .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
@@ -281,51 +303,60 @@ else:
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="filter-strip">', unsafe_allow_html=True)
 
-# Row 1: leagues (with quick-toggle) + dates
 leagues = sorted(df['Excel Document'].dropna().unique().tolist())
-
-# Quick-select state — defaults to "all on", flips when user clicks the chip
 if "leagues_selected" not in st.session_state:
     st.session_state.leagues_selected = leagues
 
-fcol1, fcol2, fcol3, fcol4 = st.columns([6, 1, 1, 1])
-with fcol1:
+# Two-column layout: filters on the left, leagues+dates compact on the right.
+left_col, right_col = st.columns([3, 1], gap="medium")
+
+# ── RIGHT: leagues + date pickers (compact panel) ──
+with right_col:
+    # League quick-select buttons — small and inline
+    bcol1, bcol2 = st.columns(2)
+    with bcol1:
+        if st.button("All leagues", use_container_width=True, help="Select all leagues"):
+            st.session_state.leagues_selected = leagues
+            st.rerun()
+    with bcol2:
+        if st.button("Clear", use_container_width=True, help="Clear all leagues"):
+            st.session_state.leagues_selected = []
+            st.rerun()
+
     selected_leagues = st.multiselect(
-        f"🔍 Leagues  ({len(st.session_state.leagues_selected)} of {len(leagues)})",
+        f"Leagues ({len(st.session_state.leagues_selected)}/{len(leagues)})",
         leagues,
         default=st.session_state.leagues_selected,
         key="leagues_widget",
         label_visibility="visible",
     )
     st.session_state.leagues_selected = selected_leagues
-with fcol2:
-    if st.button("All", use_container_width=True, help="Select all leagues"):
-        st.session_state.leagues_selected = leagues
-        st.rerun()
-    if st.button("Clear", use_container_width=True, help="Clear all leagues"):
-        st.session_state.leagues_selected = []
-        st.rerun()
-if df['Match Date'].notna().any():
-    min_date = df['Match Date'].min().date()
-    max_date = df['Match Date'].max().date()
-    with fcol3:
-        start_date = st.date_input("From", min_date, min_value=min_date, max_value=max_date)
-    with fcol4:
-        end_date = st.date_input("To", max_date, min_value=min_date, max_value=max_date)
-else:
-    start_date = end_date = None
+
+    # Date pickers under the league box
+    if df['Match Date'].notna().any():
+        min_date = df['Match Date'].min().date()
+        max_date = df['Match Date'].max().date()
+        dcol1, dcol2 = st.columns(2)
+        with dcol1:
+            start_date = st.date_input("From", min_date, min_value=min_date, max_value=max_date)
+        with dcol2:
+            end_date = st.date_input("To", max_date, min_value=min_date, max_value=max_date)
+    else:
+        start_date = end_date = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Smart filters — REBUILT for v5 signals
 # ──────────────────────────────────────────────────────────────────────────────
-st.markdown(
-    '<div style="margin: 6px 0 2px 0; font-size: 0.85rem; color: #aaa;">'
-    '<strong style="color: #ddd;">🎯 Smart Filters</strong> · '
-    'tick one or more — they stack with AND logic'
-    '</div>',
-    unsafe_allow_html=True,
-)
+# ── LEFT: smart filter checkboxes ──
+with left_col:
+    st.markdown(
+        '<div style="margin: 0 0 6px 0; font-size: 0.85rem; color: #aaa;">'
+        '<strong style="color: #ddd;">🎯 Smart Filters</strong> · '
+        'tick one or more — they stack with AND logic'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 FILTER_DEFS = [
     {
@@ -386,33 +417,35 @@ FILTER_DEFS = [
     },
 ]
 
-# 4 checkboxes per row so the strip wraps cleanly on most screens
-active_filters = []
-n_per_row = 4
-for row_start in range(0, len(FILTER_DEFS), n_per_row):
-    row_filters = FILTER_DEFS[row_start:row_start + n_per_row]
-    cols = st.columns(n_per_row)
-    for col, f in zip(cols, row_filters):
-        with col:
-            if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
-                active_filters.append(f)
+# Render the checkbox grid + custom-thresholds expander inside the left column
+with left_col:
+    # 2 rows of 4 checkboxes — fits well in the wider left column
+    active_filters = []
+    n_per_row = 4
+    for row_start in range(0, len(FILTER_DEFS), n_per_row):
+        row_filters = FILTER_DEFS[row_start:row_start + n_per_row]
+        cols = st.columns(n_per_row)
+        for col, f in zip(cols, row_filters):
+            with col:
+                if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
+                    active_filters.append(f)
 
 
-# Custom thresholds tucked into an expander
-with st.expander("⚙️ Custom thresholds (advanced)", expanded=False):
-    cc1, cc2, cc3, cc4 = st.columns(4)
-    with cc1:
-        custom_win_pct = st.slider("Min win probability (%)", 0, 100, 50, 5)
-        custom_fav_win = st.slider("Min favourite season Win%", 0, 100, 0, 5)
-    with cc2:
-        custom_draw_pct = st.slider("Max draw probability (%)", 0, 50, 30, 1)
-        custom_dog_lose = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
-    with cc3:
-        custom_margin   = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
-        custom_xg_gap   = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
-    with cc4:
-        custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
-        use_custom      = st.checkbox("Apply custom thresholds", value=False)
+    # Custom thresholds tucked into an expander
+    with st.expander("⚙️ Custom thresholds (advanced)", expanded=False):
+        cc1, cc2, cc3, cc4 = st.columns(4)
+        with cc1:
+            custom_win_pct = st.slider("Min win probability (%)", 0, 100, 50, 5)
+            custom_fav_win = st.slider("Min favourite season Win%", 0, 100, 0, 5)
+        with cc2:
+            custom_draw_pct = st.slider("Max draw probability (%)", 0, 50, 30, 1)
+            custom_dog_lose = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
+        with cc3:
+            custom_margin   = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
+            custom_xg_gap   = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
+        with cc4:
+            custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
+            use_custom      = st.checkbox("Apply custom thresholds", value=False)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -643,8 +676,6 @@ else:
             font-family: 'Segoe UI', system-ui, sans-serif;
         }
         .table-wrap {
-            max-height: 1080px;
-            overflow: auto;
             border: 1px solid #333;
             border-radius: 4px;
         }
@@ -659,9 +690,6 @@ else:
             text-align: center;
             padding: 6px 8px;
             border-bottom: 2px solid #555;
-            position: sticky;
-            top: 0;
-            z-index: 2;
             white-space: nowrap;
             cursor: pointer;
             user-select: none;
@@ -774,7 +802,13 @@ else:
         + '</div>'
         + sort_script
     )
-    components.html(full_html, height=1100, scrolling=False)
+
+    # Size the iframe to the table's natural height so the page scrolls
+    # rather than the table. Header row ≈ 38px, body rows ≈ 28px each, plus a
+    # small buffer for the border + sort handler attaching to live elements.
+    row_count = len(table_df)
+    iframe_height = 38 + (row_count * 28) + 20
+    components.html(full_html, height=iframe_height, scrolling=False)
 
     # ── Export ─────────────────────────────────────────────────────────────────
     st.subheader("💾 Export Filtered Data")
