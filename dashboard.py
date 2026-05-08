@@ -447,6 +447,10 @@ with left_col:
             custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
             use_custom      = st.checkbox("Apply custom thresholds", value=False)
 
+    # Placeholder for the metrics dashboard.
+    # Filled below, after the filter logic computes filtered_df.
+    metrics_placeholder = st.empty()
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -504,6 +508,66 @@ smart_filter_desc = " · ".join(active_descs)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Render the metrics dashboard into the placeholder we created in left_col.
+# ──────────────────────────────────────────────────────────────────────────────
+def _count(condition_series) -> int:
+    """Safe count returning 0 if the column doesn't exist."""
+    try:
+        return int(condition_series.fillna(False).sum())
+    except Exception:
+        return 0
+
+def _fmt(n: int, total: int) -> str:
+    """'48 (21.9%)' style formatting."""
+    if total == 0:
+        return "0"
+    return f"{n} <span style='color:#888;font-weight:normal;'>({n / total * 100:.0f}%)</span>"
+
+# Compute metrics off the filtered set
+n_total          = len(filtered_df)
+n_strong         = _count(filtered_df['Strong Prediction'].notna())
+n_draws          = _count(filtered_df['Model Prediction'] == 'Draw')
+n_conf_btts      = _count(filtered_df['BTTS %'] >= 60) if 'BTTS %' in filtered_df.columns else 0
+n_conf_o25       = _count(filtered_df['Over 2.5 Goals %'] >= 60) if 'Over 2.5 Goals %' in filtered_df.columns else 0
+n_acca_quality   = _count(
+    (filtered_df['_fav_season_win'].fillna(0) >= 50) &
+    (filtered_df['_dog_season_lose'].fillna(0) >= 40)
+)
+avg_h = filtered_df['Home Win %'].mean() if n_total else 0
+avg_a = filtered_df['Away Win %'].mean() if n_total else 0
+
+delta_text = ""
+if smart_filter_active:
+    delta = n_total - pre_filter_count
+    delta_text = (f' <span style="color:#888;font-weight:normal;font-size:0.75rem;">'
+                  f'({delta:+d} after filters)</span>')
+
+def _metric_html(label: str, value_html: str) -> str:
+    return (
+        '<div style="background:#1a1c22;border:1px solid #333;border-radius:6px;'
+        'padding:10px 14px;text-align:left;">'
+        f'<div style="color:#888;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.5px;">{label}</div>'
+        f'<div style="font-size:1.4rem;font-weight:600;color:#fff;margin-top:2px;">{value_html}</div>'
+        '</div>'
+    )
+
+metrics_html = (
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;">'
+    + _metric_html("Fixtures shown", f"{n_total}{delta_text}")
+    + _metric_html("Strong picks",   _fmt(n_strong, n_total))
+    + _metric_html("Draws picked",   _fmt(n_draws, n_total))
+    + _metric_html("Confident BTTS", _fmt(n_conf_btts, n_total))
+    + _metric_html("Acca Quality",   _fmt(n_acca_quality, n_total))
+    + _metric_html("Confident O2.5", _fmt(n_conf_o25, n_total))
+    + _metric_html("Avg H%",         f"{avg_h:.1f}%")
+    + _metric_html("Avg A%",         f"{avg_a:.1f}%")
+    + '</div>'
+)
+
+metrics_placeholder.markdown(metrics_html, unsafe_allow_html=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # ──────────────────────────────────────────────────────────────────────────────
 # Main view
 # ──────────────────────────────────────────────────────────────────────────────
@@ -513,31 +577,8 @@ else:
     if smart_filter_active and smart_filter_desc:
         st.info(f"🎯 **Smart filter active** — {smart_filter_desc}")
 
-    # Compact metrics strip — five figures on one tight line instead of five
-    # large st.metric cards.
-    strong_count = int(filtered_df['Strong Prediction'].notna().sum())
-    delta_text = ""
-    if smart_filter_active:
-        delta = len(filtered_df) - pre_filter_count
-        delta_text = f' <span style="color:#888;">({delta:+d} after smart filter)</span>'
-
-    st.markdown(
-        '<div style="display: flex; gap: 28px; padding: 4px 0 6px 0; font-size: 0.9rem; '
-        'border-bottom: 1px solid #2a2d36; margin-bottom: 8px;">'
-        f'<span><span style="color:#888;">Fixtures</span> '
-        f'<strong>{len(filtered_df)}</strong>{delta_text}</span>'
-        f'<span><span style="color:#888;">Avg H%</span> '
-        f'<strong>{filtered_df["Home Win %"].mean():.1f}%</strong></span>'
-        f'<span><span style="color:#888;">Avg D%</span> '
-        f'<strong>{filtered_df["Draw %"].mean():.1f}%</strong></span>'
-        f'<span><span style="color:#888;">Avg A%</span> '
-        f'<strong>{filtered_df["Away Win %"].mean():.1f}%</strong></span>'
-        f'<span><span style="color:#888;">Strong</span> '
-        f'<strong>{strong_count}</strong> '
-        f'<span style="color:#888;">({strong_count / len(filtered_df) * 100:.1f}%)</span></span>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    # Smart filter active banner moved here so it sits at the top of the table
+    # area (the metrics dashboard is now in the filter strip up top).
 
     # ── Star confidence mapping ────────────────────────────────────────────────
     # Confidence Score is the probability margin (top minus second)
