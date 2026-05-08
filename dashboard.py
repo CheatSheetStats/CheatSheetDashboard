@@ -110,6 +110,33 @@ st.markdown("""
 .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
 [data-testid="stExpander"] { margin-bottom: 4px; }
 
+/* Responsive: hide the desktop table on mobile, hide the mobile cards on
+   desktop. Each component iframe lives inside a div we tag via the
+   surrounding st.markdown sentinel, then we walk DOM siblings via :has()
+   to find the iframe wrapper and collapse it.
+   Falls back gracefully on browsers without :has() support — both iframes
+   show, but each iframe's own internal media query hides its body. */
+.viewport-desktop-only,
+.viewport-mobile-only { display: none; }
+@media (min-width: 769px) {
+    .viewport-desktop-only { display: block; }
+    .viewport-desktop-only + div [data-testid="stIFrame"],
+    .viewport-desktop-only + [data-testid="stIFrame"] { display: block; }
+    .viewport-mobile-only + div [data-testid="stIFrame"],
+    .viewport-mobile-only + [data-testid="stIFrame"] { display: none !important; }
+}
+@media (max-width: 768px) {
+    .viewport-mobile-only { display: block; }
+    .viewport-mobile-only + div [data-testid="stIFrame"],
+    .viewport-mobile-only + [data-testid="stIFrame"] { display: block; }
+    .viewport-desktop-only + div [data-testid="stIFrame"],
+    .viewport-desktop-only + [data-testid="stIFrame"] { display: none !important; }
+
+    /* Sticky filter strip stops being sticky on mobile — fixed elements
+       fight the limited viewport. */
+    .filter-strip { position: static !important; top: auto !important; }
+}
+
 /* ── Column section separators ──────────────────────────────────────────────
    Streamlit renders st.dataframe as a glide-data-grid canvas (so we can't
    target columns directly via CSS), but it exposes a row container we can
@@ -174,6 +201,314 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Mobile cards builder
+# ──────────────────────────────────────────────────────────────────────────────
+def _build_mobile_cards_html(df: pd.DataFrame) -> str:
+    """Render the filtered fixtures as a stack of expandable cards for mobile."""
+
+    # Card-only stylesheet, scoped to the iframe body
+    css = """<style>
+    body {
+        margin: 0; padding: 0;
+        background: transparent;
+        color: #e6e6e6;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        font-size: 14px;
+    }
+    .card {
+        background: #1a1c22;
+        border: 1px solid #2a2d36;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+    }
+    .card.strong-pick { border-left: 3px solid #ffd700; }
+    .card-header {
+        display: flex; justify-content: space-between;
+        font-size: 0.72rem; color: #888; margin-bottom: 10px;
+    }
+    .team-row {
+        display: grid;
+        grid-template-columns: 36px 1fr auto;
+        align-items: center; gap: 8px;
+        padding: 4px 0;
+        font-size: 0.95rem;
+    }
+    .team-row .rank { color: #888; font-size: 0.78rem; text-align: center; }
+    .team-row .name { font-weight: 500; }
+    .team-row .pct  {
+        font-weight: 600; font-variant-numeric: tabular-nums;
+        min-width: 52px; text-align: right;
+    }
+    .team-row.favourite .pct { color: #4ade80; }
+    .draw-row {
+        display: grid;
+        grid-template-columns: 36px 1fr auto;
+        align-items: center; gap: 8px;
+        padding: 2px 0 8px;
+        font-size: 0.85rem; color: #888;
+    }
+    .draw-row .name { font-style: italic; }
+    .pick-row {
+        display: flex; justify-content: space-between; align-items: center;
+        border-top: 1px solid #2a2d36;
+        padding: 8px 0 6px; font-size: 0.85rem;
+    }
+    .pick-row .pick-label  { color: #888; margin-right: 4px; }
+    .pick-row .pick-value  { font-weight: 600; }
+    .pick-row .strong-flag { color: #ffd700; margin-left: 6px; font-size: 0.78rem; }
+    .pick-row .stars       { color: #fbbf24; font-size: 0.95rem; letter-spacing: 1px; }
+    .markets-row {
+        display: flex; gap: 18px; font-size: 0.85rem; padding-bottom: 6px;
+    }
+    .markets-row .label { color: #888; margin-right: 4px; }
+    .markets-row .value { font-weight: 600; }
+    .markets-row .market.confident .value { color: #4ade80; }
+    .expand-toggle {
+        display: flex; justify-content: center; align-items: center; gap: 6px;
+        width: 100%;
+        background: transparent; border: none;
+        border-top: 1px solid #2a2d36;
+        color: #888; padding: 8px 0 0; font-size: 0.78rem; cursor: pointer;
+        margin-top: 4px;
+    }
+    .expand-toggle .arrow { transition: transform 0.2s; }
+    .card.expanded .expand-toggle .arrow { transform: rotate(180deg); }
+    .detail { display: none; margin-top: 12px; padding-top: 10px;
+              border-top: 1px solid #2a2d36; font-size: 0.82rem; }
+    .card.expanded .detail { display: block; }
+    .detail-section { margin-bottom: 10px; }
+    .section-title {
+        font-size: 0.7rem; text-transform: uppercase;
+        letter-spacing: 0.5px; color: #888; margin-bottom: 4px;
+    }
+    .stat-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+    }
+    .stat-pair {
+        display: flex; justify-content: space-between;
+        font-variant-numeric: tabular-nums;
+    }
+    .stat-pair .stat-label { color: #888; }
+    .stat-pair .stat-val   { font-weight: 500; }
+    .stat-pair .stat-val.pos { color: #4ade80; }
+    .stat-pair .stat-val.neg { color: #f87171; }
+    .winlose-grid {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+        margin-top: 4px;
+    }
+    .winlose-cell {
+        text-align: center; background: #0e1117;
+        border-radius: 4px; padding: 6px 2px;
+    }
+    .wl-label { font-size: 0.62rem; color: #888; display: block; }
+    .wl-value { font-size: 0.85rem; font-weight: 600; margin-top: 2px; display: block; }
+    .wl-value.high { color: #4ade80; }
+    .wl-value.low  { color: #f87171; }
+    .empty {
+        text-align: center; color: #888; font-size: 0.9rem; padding: 40px 0;
+    }
+    </style>"""
+
+    if len(df) == 0:
+        return css + '<div class="empty">No fixtures match the selected filters.</div>'
+
+    def stars(margin):
+        if pd.isna(margin): return ""
+        if margin < 5:  return "★"
+        if margin < 10: return "★★"
+        if margin < 20: return "★★★"
+        if margin < 35: return "★★★★"
+        return "★★★★★"
+
+    def fmt2(v):
+        return f"{v:.2f}" if pd.notna(v) else "—"
+
+    def fmt_pct(v):
+        return f"{v:.1f}%" if pd.notna(v) else "—"
+
+    def drift_class(v, deadband=0.10):
+        if pd.isna(v) or abs(v) < deadband: return ""
+        return "pos" if v > 0 else "neg"
+
+    def drift_str(v, deadband=0.10):
+        if pd.isna(v): return "—"
+        if abs(v) < deadband: return f"{v:+.2f}"
+        return f"{v:+.2f}"
+
+    def wl_class(v, high=55, low=30):
+        if pd.isna(v): return ""
+        if v >= high: return "high"
+        if v <  low:  return "low"
+        return ""
+
+    cards_html = []
+    for _, row in df.iterrows():
+        h_pct = row.get("Home Win %") or 0
+        d_pct = row.get("Draw %") or 0
+        a_pct = row.get("Away Win %") or 0
+        pick  = str(row.get("Model Prediction") or "")
+        is_h_fav = h_pct >= max(d_pct, a_pct)
+        is_a_fav = a_pct >  max(h_pct, d_pct)
+
+        h_team = str(row.get("Home Team") or "")
+        a_team = str(row.get("Away Team") or "")
+        h_rank = row.get("Home Team Rank")
+        a_rank = row.get("Away Team Rank")
+
+        match_dt = row.get("Match Date")
+        try:
+            if pd.notna(match_dt):
+                if hasattr(match_dt, "tzinfo") and match_dt.tzinfo is not None:
+                    match_dt = match_dt.tz_convert("Europe/London")
+                date_str = match_dt.strftime("%a %d %b · %H:%M")
+            else:
+                date_str = "—"
+        except Exception:
+            date_str = str(match_dt)
+
+        league = str(row.get("Excel Document") or "")
+
+        strong_val = row.get("Strong Prediction")
+        is_strong = pd.notna(strong_val) and str(strong_val).strip() not in ("", "nan", "None")
+
+        margin = row.get("Confidence Score")
+        star_str = stars(margin)
+
+        # BTTS / O2.5 with confident colour cue
+        btts_pct = row.get("BTTS %") or 0
+        o25_pct  = row.get("Over 2.5 Goals %") or 0
+
+        # Detail panel data (with safe getters)
+        h_ppg, a_ppg = row.get("Home PPG (Season)"), row.get("Away PPG (Season)")
+        h_gpg, a_gpg = row.get("Home Team GPG"), row.get("Away Team GPG")
+        h_gcpg, a_gcpg = row.get("Home Team GCPG"), row.get("Away Team GCPG")
+        h_l5, a_l5 = row.get("Home PPG (Last 5)"), row.get("Away PPG (Last 5)")
+        h_fd, a_fd = row.get("Home Form Drift"), row.get("Away Form Drift")
+        h_v, a_v   = row.get("Home PPG (At Home)"), row.get("Away PPG (Away)")
+        h_vd, a_vd = row.get("Home Venue Drift"), row.get("Away Venue Drift")
+        h_w, a_w   = row.get("Home Win % (Season)"), row.get("Away Win % (Season)")
+        h_l, a_l   = row.get("Home Lose % (Season)"), row.get("Away Lose % (Season)")
+
+        card = []
+        card.append(f'<div class="card{" strong-pick" if is_strong else ""}">')
+        card.append(f'<div class="card-header"><span>{date_str}</span><span>{league}</span></div>')
+
+        card.append(
+            f'<div class="team-row{" favourite" if is_h_fav else ""}">'
+            f'<span class="rank">#{int(h_rank)}</span>' if pd.notna(h_rank) else '<div class="team-row"><span class="rank">—</span>'
+        )
+        # rebuild more cleanly
+        card[-1] = (
+            f'<div class="team-row{" favourite" if is_h_fav else ""}">'
+            f'<span class="rank">{"#" + str(int(h_rank)) if pd.notna(h_rank) else "—"}</span>'
+            f'<span class="name">{h_team}</span>'
+            f'<span class="pct">{h_pct:.1f}%</span>'
+            f'</div>'
+        )
+        card.append(
+            f'<div class="team-row{" favourite" if is_a_fav else ""}">'
+            f'<span class="rank">{"#" + str(int(a_rank)) if pd.notna(a_rank) else "—"}</span>'
+            f'<span class="name">{a_team}</span>'
+            f'<span class="pct">{a_pct:.1f}%</span>'
+            f'</div>'
+        )
+        card.append(
+            f'<div class="draw-row">'
+            f'<span class="rank"></span>'
+            f'<span class="name">Draw</span>'
+            f'<span class="pct">{d_pct:.1f}%</span>'
+            f'</div>'
+        )
+
+        # Pick row
+        strong_html = '<span class="strong-flag">⭐ Strong</span>' if is_strong else ''
+        card.append(
+            f'<div class="pick-row">'
+            f'<div><span class="pick-label">Pick:</span>'
+            f'<span class="pick-value">{pick}</span>{strong_html}</div>'
+            f'<div class="stars">{star_str}</div>'
+            f'</div>'
+        )
+
+        # Markets row
+        btts_class = "market confident" if btts_pct >= 60 else "market"
+        o25_class  = "market confident" if o25_pct  >= 60 else "market"
+        card.append(
+            f'<div class="markets-row">'
+            f'<div class="{btts_class}"><span class="label">BTTS</span>'
+            f'<span class="value">{btts_pct:.0f}%</span></div>'
+            f'<div class="{o25_class}"><span class="label">O2.5</span>'
+            f'<span class="value">{o25_pct:.0f}%</span></div>'
+            f'</div>'
+        )
+
+        # Expand toggle
+        card.append(
+            '<button class="expand-toggle" onclick="toggleCard(this)">'
+            '<span class="toggle-text">More stats</span><span class="arrow">▾</span>'
+            '</button>'
+        )
+
+        # Detail panel
+        detail = []
+        detail.append('<div class="detail">')
+        detail.append('<div class="detail-section"><div class="section-title">Season form</div>')
+        detail.append('<div class="stat-grid">')
+        detail.append(f'<div class="stat-pair"><span class="stat-label">PPG</span>'
+                      f'<span class="stat-val">{fmt2(h_ppg)} / {fmt2(a_ppg)}</span></div>')
+        detail.append(f'<div class="stat-pair"><span class="stat-label">GPG</span>'
+                      f'<span class="stat-val">{fmt2(h_gpg)} / {fmt2(a_gpg)}</span></div>')
+        detail.append(f'<div class="stat-pair"><span class="stat-label">GCPG</span>'
+                      f'<span class="stat-val">{fmt2(h_gcpg)} / {fmt2(a_gcpg)}</span></div>')
+        detail.append('</div></div>')
+
+        detail.append('<div class="detail-section"><div class="section-title">Form &amp; venue</div>')
+        detail.append('<div class="stat-grid">')
+        detail.append(f'<div class="stat-pair"><span class="stat-label">Last 5</span>'
+                      f'<span class="stat-val">{fmt2(h_l5)} / {fmt2(a_l5)}</span></div>')
+        detail.append(f'<div class="stat-pair"><span class="stat-label">Form Δ</span>'
+                      f'<span class="stat-val"><span class="stat-val {drift_class(h_fd)}">{drift_str(h_fd)}</span> / '
+                      f'<span class="stat-val {drift_class(a_fd)}">{drift_str(a_fd)}</span></span></div>')
+        detail.append(f'<div class="stat-pair"><span class="stat-label">Venue</span>'
+                      f'<span class="stat-val">{fmt2(h_v)} @H / {fmt2(a_v)} @A</span></div>')
+        detail.append(f'<div class="stat-pair"><span class="stat-label">Venue Δ</span>'
+                      f'<span class="stat-val"><span class="stat-val {drift_class(h_vd)}">{drift_str(h_vd)}</span> / '
+                      f'<span class="stat-val {drift_class(a_vd)}">{drift_str(a_vd)}</span></span></div>')
+        detail.append('</div></div>')
+
+        detail.append('<div class="detail-section"><div class="section-title">Win / lose %</div>')
+        detail.append('<div class="winlose-grid">')
+        detail.append(f'<div class="winlose-cell"><span class="wl-label">H Win</span>'
+                      f'<span class="wl-value {wl_class(h_w)}">{fmt_pct(h_w)}</span></div>')
+        detail.append(f'<div class="winlose-cell"><span class="wl-label">A Lose</span>'
+                      f'<span class="wl-value {wl_class(a_l)}">{fmt_pct(a_l)}</span></div>')
+        detail.append(f'<div class="winlose-cell"><span class="wl-label">H Lose</span>'
+                      f'<span class="wl-value {wl_class(h_l)}">{fmt_pct(h_l)}</span></div>')
+        detail.append(f'<div class="winlose-cell"><span class="wl-label">A Win</span>'
+                      f'<span class="wl-value {wl_class(a_w)}">{fmt_pct(a_w)}</span></div>')
+        detail.append('</div></div>')
+        detail.append('</div>')
+
+        card.append("\n".join(detail))
+        card.append('</div>')
+        cards_html.append("\n".join(card))
+
+    # Toggle script — uses event delegation in case cards re-render
+    script = """<script>
+    function toggleCard(btn) {
+        const card = btn.closest('.card');
+        card.classList.toggle('expanded');
+        const txt = btn.querySelector('.toggle-text');
+        txt.textContent = card.classList.contains('expanded') ? 'Less stats' : 'More stats';
+    }
+    </script>"""
+
+    return css + "\n".join(cards_html) + script
+
 
 
 st.markdown(
@@ -897,7 +1232,19 @@ else:
     # small buffer for the border + sort handler attaching to live elements.
     row_count = len(table_df)
     iframe_height = 38 + (row_count * 28) + 20
+
+    # Desktop table — hidden by CSS at narrow viewports. Sentinel marker so
+    # the page-level CSS can find the next sibling iframe.
+    st.markdown('<div class="viewport-desktop-only"></div>', unsafe_allow_html=True)
     components.html(full_html, height=iframe_height, scrolling=False)
+
+    # Mobile card view — hidden by CSS at wider viewports.
+    st.markdown('<div class="viewport-mobile-only"></div>', unsafe_allow_html=True)
+    mobile_html = _build_mobile_cards_html(filtered_df)
+    # Each card is roughly 165px collapsed; expanded adds ~150px but only when
+    # the user taps. Sized to collapsed height — page scrolls naturally.
+    mobile_height = 60 + (len(filtered_df) * 175) + 20
+    components.html(mobile_html, height=mobile_height, scrolling=False)
 
     # ── Export ─────────────────────────────────────────────────────────────────
     st.subheader("💾 Export Filtered Data")
