@@ -353,6 +353,9 @@ else:
         # 6. Win / Lose % — for accumulator filtering
         'Home Win % (Season)',  'Away Win % (Season)',
         'Home Lose % (Season)', 'Away Lose % (Season)',
+        # 7. BTTS / Over 2.5 — with league base rate context
+        'BTTS %', 'PredictionBTTS', 'League BTTS Rate',
+        'Over 2.5 Goals %', 'Over25YN', 'League O2.5 Rate',
     ]
 
     available_columns = [c for c in display_columns if c in filtered_df.columns]
@@ -392,13 +395,25 @@ else:
         'Away Win % (Season)':    'A Win%',
         'Home Lose % (Season)':   'H Lose%',
         'Away Lose % (Season)':   'A Lose%',
+        'BTTS %':                 'BTTS%',
+        'PredictionBTTS':         'BTTS',
+        'League BTTS Rate':       'Lg BTTS',
+        'Over 2.5 Goals %':       'O2.5%',
+        'Over25YN':               'O2.5',
+        'League O2.5 Rate':       'Lg O2.5',
     }, inplace=True)
 
     # ── Formatting ─────────────────────────────────────────────────────────────
-    pct_cols = ['H%', 'D%', 'A%', 'H Win%', 'A Win%', 'H Lose%', 'A Lose%']
+    pct_cols = ['H%', 'D%', 'A%', 'H Win%', 'A Win%', 'H Lose%', 'A Lose%',
+                'BTTS%', 'O2.5%']
     for c in pct_cols:
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
+
+    # League base rates display as integer percentage
+    for c in ['Lg BTTS', 'Lg O2.5']:
+        if c in table_df.columns:
+            table_df[c] = table_df[c].apply(lambda x: f"{int(x)}%" if pd.notna(x) else "-")
 
     two_dp_cols = ['H GPG', 'A GPG', 'H GCPG', 'A GCPG',
                    'H PPG', 'A PPG', 'H Form', 'A Form',
