@@ -110,33 +110,6 @@ st.markdown("""
 .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
 [data-testid="stExpander"] { margin-bottom: 4px; }
 
-/* Responsive: hide the desktop table on mobile, hide the mobile cards on
-   desktop. Each component iframe lives inside a div we tag via the
-   surrounding st.markdown sentinel, then we walk DOM siblings via :has()
-   to find the iframe wrapper and collapse it.
-   Falls back gracefully on browsers without :has() support — both iframes
-   show, but each iframe's own internal media query hides its body. */
-.viewport-desktop-only,
-.viewport-mobile-only { display: none; }
-@media (min-width: 769px) {
-    .viewport-desktop-only { display: block; }
-    .viewport-desktop-only + div [data-testid="stIFrame"],
-    .viewport-desktop-only + [data-testid="stIFrame"] { display: block; }
-    .viewport-mobile-only + div [data-testid="stIFrame"],
-    .viewport-mobile-only + [data-testid="stIFrame"] { display: none !important; }
-}
-@media (max-width: 768px) {
-    .viewport-mobile-only { display: block; }
-    .viewport-mobile-only + div [data-testid="stIFrame"],
-    .viewport-mobile-only + [data-testid="stIFrame"] { display: block; }
-    .viewport-desktop-only + div [data-testid="stIFrame"],
-    .viewport-desktop-only + [data-testid="stIFrame"] { display: none !important; }
-
-    /* Sticky filter strip stops being sticky on mobile — fixed elements
-       fight the limited viewport. */
-    .filter-strip { position: static !important; top: auto !important; }
-}
-
 /* ── Column section separators ──────────────────────────────────────────────
    Streamlit renders st.dataframe as a glide-data-grid canvas (so we can't
    target columns directly via CSS), but it exposes a row container we can
@@ -497,27 +470,51 @@ def _build_mobile_cards_html(df: pd.DataFrame) -> str:
         card.append('</div>')
         cards_html.append("\n".join(card))
 
-    # Toggle script — uses event delegation in case cards re-render
+    # Toggle script. After expanding/collapsing a card we tell Streamlit's
+    # parent iframe to resize so the table page can grow with the content.
+    # Uses the same Streamlit.setFrameHeight bridge as components.html.
     script = """<script>
+    function syncHeight() {
+        const h = document.documentElement.scrollHeight;
+        if (window.parent && window.parent.postMessage) {
+            // Streamlit's Component bridge listens for this message shape.
+            window.parent.postMessage(
+                { type: 'streamlit:setFrameHeight', height: h },
+                '*'
+            );
+        }
+    }
     function toggleCard(btn) {
         const card = btn.closest('.card');
         card.classList.toggle('expanded');
         const txt = btn.querySelector('.toggle-text');
         txt.textContent = card.classList.contains('expanded') ? 'Less stats' : 'More stats';
+        // Allow CSS transition to complete before measuring height
+        setTimeout(syncHeight, 50);
     }
+    // Initial sync after layout settles.
+    window.addEventListener('load', () => setTimeout(syncHeight, 50));
     </script>"""
 
     return css + "\n".join(cards_html) + script
 
 
 
-st.markdown(
-    '<div style="display: flex; align-items: baseline; gap: 12px; margin: 0 0 4px 0;">'
-    '<h1 style="margin: 0; font-size: 1.6rem;">⚽ Football Prediction Model</h1>'
-    '<span style="color: #888; font-size: 0.85rem;">Model v5 predictions</span>'
-    '</div>',
-    unsafe_allow_html=True,
-)
+title_col, toggle_col = st.columns([4, 1])
+with title_col:
+    st.markdown(
+        '<div style="display: flex; align-items: baseline; gap: 12px; margin: 0 0 4px 0;">'
+        '<h1 style="margin: 0; font-size: 1.6rem;">⚽ Football Prediction Model</h1>'
+        '<span style="color: #888; font-size: 0.85rem;">Model v5 predictions</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+with toggle_col:
+    mobile_view = st.checkbox(
+        "📱 Mobile view",
+        value=False,
+        help="Switch to a card-based layout designed for phones",
+    )
 
 # ── Key / Legend ──────────────────────────────────────────────────────────────
 with st.expander("📖 Key — what the columns and filters mean"):
@@ -1233,18 +1230,18 @@ else:
     row_count = len(table_df)
     iframe_height = 38 + (row_count * 28) + 20
 
-    # Desktop table — hidden by CSS at narrow viewports. Sentinel marker so
-    # the page-level CSS can find the next sibling iframe.
-    st.markdown('<div class="viewport-desktop-only"></div>', unsafe_allow_html=True)
-    components.html(full_html, height=iframe_height, scrolling=False)
-
-    # Mobile card view — hidden by CSS at wider viewports.
-    st.markdown('<div class="viewport-mobile-only"></div>', unsafe_allow_html=True)
-    mobile_html = _build_mobile_cards_html(filtered_df)
-    # Each card is roughly 165px collapsed; expanded adds ~150px but only when
-    # the user taps. Sized to collapsed height — page scrolls naturally.
-    mobile_height = 60 + (len(filtered_df) * 175) + 20
-    components.html(mobile_html, height=mobile_height, scrolling=False)
+    # Branch on the toggle — only one view is rendered. Server-side selection
+    # is far more reliable than browser-side iframe hiding through Streamlit's
+    # nested wrapper divs.
+    if mobile_view:
+        mobile_html = _build_mobile_cards_html(filtered_df)
+        # Initial size assumes collapsed cards (~175px each). When the user
+        # taps a card to expand it, the JS inside the iframe posts a new
+        # frame-height to Streamlit's parent so the iframe grows accordingly.
+        mobile_height = 60 + (len(filtered_df) * 175) + 40
+        components.html(mobile_html, height=mobile_height, scrolling=False)
+    else:
+        components.html(full_html, height=iframe_height, scrolling=False)
 
     # ── Export ─────────────────────────────────────────────────────────────────
     st.subheader("💾 Export Filtered Data")
