@@ -105,6 +105,15 @@ home_fav = df['Home Win %'] >= df['Away Win %']
 df['_fav_win_pct'] = np.where(home_fav, df['Home Win %'],  df['Away Win %'])
 df['_fav_team']    = np.where(home_fav, df['Home Team'],   df['Away Team'])
 
+# Season Win% / Lose% from the favourite's and underdog's perspective
+# (used by the accumulator filter — "favourite that genuinely wins, underdog that genuinely loses")
+if 'Home Win % (Season)' in df.columns and 'Away Win % (Season)' in df.columns:
+    df['_fav_season_win']    = np.where(home_fav, df['Home Win % (Season)'],  df['Away Win % (Season)'])
+    df['_dog_season_lose']   = np.where(home_fav, df['Away Lose % (Season)'], df['Home Lose % (Season)'])
+else:
+    df['_fav_season_win']  = np.nan
+    df['_dog_season_lose'] = np.nan
+
 # v5-specific perspective columns
 if HAS_V5_COLS:
     df['_fav_xg_diff_pm'] = np.where(home_fav, df['Home xG Diff PM'], df['Away xG Diff PM'])
@@ -188,6 +197,13 @@ FILTER_DEFS = [
         "strong":  False,
     },
     {
+        "key":   "acca_quality",
+        "label": "🎲 Acca Quality",
+        "desc":  "Favourite wins ≥ 50% of season AND underdog loses ≥ 40% of season",
+        "numeric": [("_fav_season_win", ">=", 50), ("_dog_season_lose", ">=", 40)],
+        "strong":  False,
+    },
+    {
         "key":   "all_in",
         "label": "💪 All-In (Strong + High Conf)",
         "desc":  "Strong Prediction AND win-margin ≥ 25pp — most conservative",
@@ -210,6 +226,8 @@ with st.sidebar.expander("Set your own thresholds", expanded=False):
     custom_margin     = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
     custom_xg_gap     = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
     custom_rank_gap   = st.slider("Min league rank gap", 0, 24, 0, 1)
+    custom_fav_win    = st.slider("Min favourite season Win%", 0, 100, 0, 5)
+    custom_dog_lose   = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
     use_custom        = st.checkbox("Apply custom thresholds", value=False)
 
 
@@ -246,14 +264,18 @@ if use_custom:
     smart_filter_active = True
     active_descs.append(
         f"Win% ≥ {custom_win_pct} · Draw% ≤ {custom_draw_pct} · "
-        f"Margin ≥ {custom_margin}pp · xG gap ≥ {custom_xg_gap} · Rank gap ≥ {custom_rank_gap}"
+        f"Margin ≥ {custom_margin}pp · xG gap ≥ {custom_xg_gap} · "
+        f"Rank gap ≥ {custom_rank_gap} · "
+        f"Fav Win% ≥ {custom_fav_win} · Dog Lose% ≥ {custom_dog_lose}"
     )
     combined_mask &= (
         (filtered_df['_fav_win_pct'] >= custom_win_pct) &
         (filtered_df['Draw %']       <= custom_draw_pct) &
         (filtered_df['_win_margin']  >= custom_margin) &
         (filtered_df['_xg_match_gap']>= custom_xg_gap) &
-        (filtered_df['_rank_gap'].fillna(0) >= custom_rank_gap)
+        (filtered_df['_rank_gap'].fillna(0)         >= custom_rank_gap) &
+        (filtered_df['_fav_season_win'].fillna(0)   >= custom_fav_win) &
+        (filtered_df['_dog_season_lose'].fillna(0)  >= custom_dog_lose)
     )
 
 if smart_filter_active:
@@ -292,72 +314,105 @@ else:
     col4.metric("Strong", f"{strong_count} ({strong_count / len(filtered_df) * 100:.1f}%)")
     st.markdown("---")
 
-    # Desktop table view (mobile card view path preserved if you re-enable it)
+    # ── Star confidence mapping ────────────────────────────────────────────────
+    # Confidence Score is the probability margin (top minus second)
+    def stars_from_margin(m):
+        if pd.isna(m):       return "-"
+        if m < 5:            return "★"
+        if m < 10:           return "★★"
+        if m < 20:           return "★★★"
+        if m < 35:           return "★★★★"
+        return "★★★★★"
+
+    # ── Build display table ────────────────────────────────────────────────────
+    # Logical column order matches the six-section thinking flow:
+    #   1. Who wins?     → H% / D% / A% / Pred / Strong / ★Conf / Draw?
+    #   2. Rank          → H R / A R
+    #   3. Season form   → PPG / GPG / GCPG (home and away teams)
+    #   4. Recent form   → Last 5 PPG + drift vs season
+    #   5. Venue         → Home team's home PPG, Away team's away PPG
+    #   6. Win / Lose %  → for filtering against weak/strong sides
+
     display_columns = [
         'Match Date', 'Excel Document',
-        'Home Team Rank', 'Home Team', 'Away Team', 'Away Team Rank',
+        # 1. Who wins?
+        'Home Team', 'Away Team',
         'Home Win %', 'Draw %', 'Away Win %',
-        'Model Prediction', 'Strong Prediction', 'Confidence Score',
-        'PredictionBTTS', 'Over25YN',
-        'Home xG', 'Away xG',
-        'Home xG Diff PM', 'Away xG Diff PM',
-        'Home Defence XG Over', 'Away Defence XG Over',
-        'Home Team GPG', 'Away Team GPG',
-        'Home Team GCPG', 'Away Team GCPG',
-        'BTTS %', 'Over 2.5 Goals %',
-        'League Home Adv (PPG)', 'Style Edge',
+        'Model Prediction', 'Strong Prediction', 'Confidence Score', 'Draw Gate Fired',
+        # 2. Rank
+        'Home Team Rank', 'Away Team Rank',
+        # 3. Season structure
+        'Home PPG (Season)',  'Away PPG (Season)',
+        'Home Team GPG',      'Away Team GPG',
+        'Home Team GCPG',     'Away Team GCPG',
+        # 4. Recent form
+        'Home PPG (Last 5)',  'Away PPG (Last 5)',
+        'Home Form Drift',    'Away Form Drift',
+        # 5. Venue
+        'Home PPG (At Home)', 'Away PPG (Away)',
+        # 6. Win / Lose % — for accumulator filtering
+        'Home Win % (Season)',  'Away Win % (Season)',
+        'Home Lose % (Season)', 'Away Lose % (Season)',
     ]
 
     available_columns = [c for c in display_columns if c in filtered_df.columns]
     table_df = filtered_df[available_columns].copy()
 
+    # Convert Confidence Score → stars (do this before rename)
+    if 'Confidence Score' in table_df.columns:
+        table_df['Confidence Score'] = table_df['Confidence Score'].apply(stars_from_margin)
+
     table_df.rename(columns={
-        'Match Date':            'Date',
-        'Excel Document':        'League',
-        'Home Team Rank':        'H R',
-        'Home Team':             'Home',
-        'Away Team':             'Away',
-        'Away Team Rank':        'A R',
-        'Home Win %':            'H%',
-        'Draw %':                'D%',
-        'Away Win %':            'A%',
-        'Home xG':               'H xG',
-        'Away xG':               'A xG',
-        'Home xG Diff PM':       'H xGΔ',
-        'Away xG Diff PM':       'A xGΔ',
-        'Home Defence XG Over':  'H DefOver',
-        'Away Defence XG Over':  'A DefOver',
-        'Home Team GPG':         'H GPG',
-        'Away Team GPG':         'A GPG',
-        'Home Team GCPG':        'H GCPG',
-        'Away Team GCPG':        'A GCPG',
-        'PredictionBTTS':        'BTTS',
-        'BTTS %':                'BTTS%',
-        'Over 2.5 Goals %':      'O2.5%',
-        'Over25YN':              'O2.5',
-        'Model Prediction':      'Model',
-        'Confidence Score':      'Conf',
-        'Strong Prediction':     'Strong',
-        'League Home Adv (PPG)': 'Home Adv',
-        'Style Edge':            'Style',
+        'Match Date':             'Date',
+        'Excel Document':         'League',
+        'Home Team':              'Home',
+        'Away Team':              'Away',
+        'Home Team Rank':         'H Rank',
+        'Away Team Rank':         'A Rank',
+        'Home Win %':             'H%',
+        'Draw %':                 'D%',
+        'Away Win %':             'A%',
+        'Model Prediction':       'Pick',
+        'Strong Prediction':      'Strong',
+        'Confidence Score':       'Conf',
+        'Draw Gate Fired':        'Draw?',
+        'Home PPG (Season)':      'H PPG',
+        'Away PPG (Season)':      'A PPG',
+        'Home Team GPG':          'H GPG',
+        'Away Team GPG':          'A GPG',
+        'Home Team GCPG':         'H GCPG',
+        'Away Team GCPG':         'A GCPG',
+        'Home PPG (Last 5)':      'H Form',
+        'Away PPG (Last 5)':      'A Form',
+        'Home Form Drift':        'H Δ',
+        'Away Form Drift':        'A Δ',
+        'Home PPG (At Home)':     'H @Home',
+        'Away PPG (Away)':        'A @Away',
+        'Home Win % (Season)':    'H Win%',
+        'Away Win % (Season)':    'A Win%',
+        'Home Lose % (Season)':   'H Lose%',
+        'Away Lose % (Season)':   'A Lose%',
     }, inplace=True)
 
-    # Formatting
-    pct_cols = ['H%', 'D%', 'A%', 'BTTS%', 'O2.5%']
+    # ── Formatting ─────────────────────────────────────────────────────────────
+    pct_cols = ['H%', 'D%', 'A%', 'H Win%', 'A Win%', 'H Lose%', 'A Lose%']
     for c in pct_cols:
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
 
-    one_dp_cols = ['H xG', 'A xG', 'H xGΔ', 'A xGΔ', 'H DefOver', 'A DefOver',
-                   'H GPG', 'A GPG', 'H GCPG', 'A GCPG', 'Conf', 'Home Adv']
-    for c in one_dp_cols:
+    two_dp_cols = ['H GPG', 'A GPG', 'H GCPG', 'A GCPG',
+                   'H PPG', 'A PPG', 'H Form', 'A Form',
+                   'H @Home', 'A @Away']
+    for c in two_dp_cols:
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
 
-    if 'Style' in table_df.columns:
-        table_df['Style'] = table_df['Style'].apply(lambda x: f"{x:+.3f}" if pd.notna(x) else "-")
+    # Form drift gets a +/- sign so direction is obvious at a glance
+    for c in ['H Δ', 'A Δ']:
+        if c in table_df.columns:
+            table_df[c] = table_df[c].apply(lambda x: f"{x:+.2f}" if pd.notna(x) else "-")
 
-    rank_cols = ['H R', 'A R']
+    rank_cols = ['H Rank', 'A Rank']
     for c in rank_cols:
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(lambda x: f"{int(x)}" if pd.notna(x) else "-")
@@ -369,7 +424,7 @@ else:
 
     st.dataframe(table_df, use_container_width=True, hide_index=True, height=1200)
 
-    # Export
+    # ── Export ─────────────────────────────────────────────────────────────────
     st.subheader("💾 Export Filtered Data")
     csv = filtered_df.to_csv(index=False).encode('utf-8')
     st.download_button(
