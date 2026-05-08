@@ -795,7 +795,7 @@ else:
     </style>
     """
 
-    sort_script = """
+    sort_script = r"""
     <script>
     (function() {
         const table = document.getElementById('bordered-sortable');
@@ -808,6 +808,11 @@ else:
             const raw = cell.textContent.trim();
             if (raw === '-' || raw === '' || raw === 'nan' || raw === 'None') {
                 return { num: null, str: '' };
+            }
+            // Datetime: "YYYY-MM-DD HH:MM" or "YYYY-MM-DD" — sort as epoch ms
+            if (/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$/.test(raw)) {
+                const ts = Date.parse(raw.replace(' ', 'T'));
+                if (!isNaN(ts)) return { num: ts, str: raw };
             }
             if (raw.includes('★')) {
                 return { num: (raw.match(/★/g) || []).length, str: raw };
