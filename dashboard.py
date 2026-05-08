@@ -30,7 +30,7 @@ st.set_page_config(
     page_title="Football Prediction Dashboard",
     page_icon="⚽",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 st.markdown("""
@@ -71,6 +71,17 @@ st.markdown("""
 [data-testid="stDataFrame"] {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+}
+
+/* Sticky filter strip — keeps controls visible while scrolling the table */
+.filter-strip {
+    position: sticky;
+    top: 0;
+    background: #0e1117;
+    z-index: 100;
+    padding: 8px 0;
+    border-bottom: 1px solid #333;
+    margin-bottom: 16px;
 }
 
 /* ── Column section separators ──────────────────────────────────────────────
@@ -259,18 +270,20 @@ else:
 # ──────────────────────────────────────────────────────────────────────────────
 # Sidebar: league + date filters
 # ──────────────────────────────────────────────────────────────────────────────
-st.sidebar.header("🔍 Filters")
+st.markdown('<div class="filter-strip">', unsafe_allow_html=True)
+st.markdown("### 🔍 Filters")
 
+# Row 1: leagues + dates
 leagues = sorted(df['Excel Document'].dropna().unique().tolist())
-selected_leagues = st.sidebar.multiselect("Select Leagues", leagues, default=leagues)
-
+fcol1, fcol2, fcol3 = st.columns([5, 1, 1])
+with fcol1:
+    selected_leagues = st.multiselect("Select Leagues", leagues, default=leagues)
 if df['Match Date'].notna().any():
     min_date = df['Match Date'].min().date()
     max_date = df['Match Date'].max().date()
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
+    with fcol2:
         start_date = st.date_input("From", min_date, min_value=min_date, max_value=max_date)
-    with col2:
+    with fcol3:
         end_date = st.date_input("To", max_date, min_value=min_date, max_value=max_date)
 else:
     start_date = end_date = None
@@ -279,19 +292,13 @@ else:
 # ──────────────────────────────────────────────────────────────────────────────
 # Smart filters — REBUILT for v5 signals
 # ──────────────────────────────────────────────────────────────────────────────
-st.sidebar.markdown("---")
-st.sidebar.subheader("🎯 Smart Filters")
-
-st.sidebar.markdown(
-    "<small>Tick one or more — they stack with AND logic. "
-    "These filters use v5's predictive signals (xG, confidence margin, rank gap).</small>",
-    unsafe_allow_html=True
-)
+st.markdown("**🎯 Smart Filters** &nbsp; <small>tick one or more — they stack with AND logic</small>",
+            unsafe_allow_html=True)
 
 FILTER_DEFS = [
     {
         "key":   "strong_only",
-        "label": "⭐ Strong Predictions Only",
+        "label": "⭐ Strong Predictions",
         "desc":  "Only fixtures where the Strong Prediction gate fired",
         "numeric": [],
         "strong":  True,
@@ -312,7 +319,7 @@ FILTER_DEFS = [
     },
     {
         "key":   "rank_gap",
-        "label": "🔵 Rank Gap (Top vs Bottom)",
+        "label": "🔵 Rank Gap",
         "desc":  "League rank gap ≥ 10",
         "numeric": [("_rank_gap", ">=", 10)],
         "strong":  False,
@@ -340,30 +347,42 @@ FILTER_DEFS = [
     },
     {
         "key":   "all_in",
-        "label": "💪 All-In (Strong + High Conf)",
+        "label": "💪 All-In",
         "desc":  "Strong Prediction AND win-margin ≥ 25pp — most conservative",
         "numeric": [("_win_margin", ">=", 25)],
         "strong":  True,
     },
 ]
 
+# 4 checkboxes per row so the strip wraps cleanly on most screens
 active_filters = []
-for f in FILTER_DEFS:
-    if st.sidebar.checkbox(f["label"], value=False, key=f"chk_{f['key']}"):
-        active_filters.append(f)
+n_per_row = 4
+for row_start in range(0, len(FILTER_DEFS), n_per_row):
+    row_filters = FILTER_DEFS[row_start:row_start + n_per_row]
+    cols = st.columns(n_per_row)
+    for col, f in zip(cols, row_filters):
+        with col:
+            if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
+                active_filters.append(f)
 
 
-# Custom sliders
-st.sidebar.markdown("**Custom thresholds:**")
-with st.sidebar.expander("Set your own thresholds", expanded=False):
-    custom_win_pct    = st.slider("Min win probability (%)", 0, 100, 50, 5)
-    custom_draw_pct   = st.slider("Max draw probability (%)", 0,  50, 30, 1)
-    custom_margin     = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
-    custom_xg_gap     = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
-    custom_rank_gap   = st.slider("Min league rank gap", 0, 24, 0, 1)
-    custom_fav_win    = st.slider("Min favourite season Win%", 0, 100, 0, 5)
-    custom_dog_lose   = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
-    use_custom        = st.checkbox("Apply custom thresholds", value=False)
+# Custom thresholds tucked into an expander
+with st.expander("⚙️ Custom thresholds (advanced)", expanded=False):
+    cc1, cc2, cc3, cc4 = st.columns(4)
+    with cc1:
+        custom_win_pct = st.slider("Min win probability (%)", 0, 100, 50, 5)
+        custom_fav_win = st.slider("Min favourite season Win%", 0, 100, 0, 5)
+    with cc2:
+        custom_draw_pct = st.slider("Max draw probability (%)", 0, 50, 30, 1)
+        custom_dog_lose = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
+    with cc3:
+        custom_margin   = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
+        custom_xg_gap   = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
+    with cc4:
+        custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
+        use_custom      = st.checkbox("Apply custom thresholds", value=False)
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -420,17 +439,6 @@ smart_filter_desc = " · ".join(active_descs)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Sidebar metrics
-# ──────────────────────────────────────────────────────────────────────────────
-st.sidebar.markdown("---")
-st.sidebar.subheader("📊 Metrics")
-st.sidebar.metric(
-    "Fixtures shown", len(filtered_df),
-    delta=f"{len(filtered_df) - pre_filter_count} from smart filter" if smart_filter_active else None
-)
-st.sidebar.metric("Strong Predictions", int(filtered_df['Strong Prediction'].notna().sum()))
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Main view
 # ──────────────────────────────────────────────────────────────────────────────
@@ -441,12 +449,16 @@ else:
         st.info(f"🎯 **Smart filter active** — {smart_filter_desc}")
 
     # Key metrics row
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Avg H%", f"{filtered_df['Home Win %'].mean():.1f}%")
-    col2.metric("Avg D%", f"{filtered_df['Draw %'].mean():.1f}%")
-    col3.metric("Avg A%", f"{filtered_df['Away Win %'].mean():.1f}%")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric(
+        "Fixtures shown", len(filtered_df),
+        delta=f"{len(filtered_df) - pre_filter_count} from smart filter" if smart_filter_active else None
+    )
+    col2.metric("Avg H%", f"{filtered_df['Home Win %'].mean():.1f}%")
+    col3.metric("Avg D%", f"{filtered_df['Draw %'].mean():.1f}%")
+    col4.metric("Avg A%", f"{filtered_df['Away Win %'].mean():.1f}%")
     strong_count = int(filtered_df['Strong Prediction'].notna().sum())
-    col4.metric("Strong", f"{strong_count} ({strong_count / len(filtered_df) * 100:.1f}%)")
+    col5.metric("Strong", f"{strong_count} ({strong_count / len(filtered_df) * 100:.1f}%)")
     st.markdown("---")
 
     # ── Star confidence mapping ────────────────────────────────────────────────
