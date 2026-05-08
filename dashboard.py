@@ -681,10 +681,20 @@ else:
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
 
-    # Form drift gets a +/- sign so direction is obvious at a glance
+    # Form & venue drift get a +/- sign AND colour-coding so direction is
+    # obvious at a glance. Green = team performing better than usual,
+    # red = worse than usual.
+    def _drift_html(x):
+        if pd.isna(x):
+            return "-"
+        if x > 0:
+            return f'<span style="color:#4ade80;">+{x:.2f}</span>'
+        if x < 0:
+            return f'<span style="color:#f87171;">{x:.2f}</span>'
+        return "+0.00"  # neutral
     for c in ['H Δ', 'A Δ', 'H @H Δ', 'A @A Δ']:
         if c in table_df.columns:
-            table_df[c] = table_df[c].apply(lambda x: f"{x:+.2f}" if pd.notna(x) else "-")
+            table_df[c] = table_df[c].apply(_drift_html)
 
     rank_cols = ['H Rank', 'A Rank']
     for c in rank_cols:
