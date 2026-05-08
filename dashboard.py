@@ -140,6 +140,62 @@ st.markdown("""
 
 st.title("⚽ Football Prediction Model Dashboard")
 st.caption("Showing Model v5 predictions")
+
+# ── Key / Legend ──────────────────────────────────────────────────────────────
+with st.expander("📖 Key — what the columns and filters mean"):
+    st.markdown("""
+**Column reference** *(click any column header in the table to sort by it)*
+
+**🎯 Who wins?**
+- **H% / D% / A%** — model's probability for Home win, Draw, Away win
+- **Pick** — the model's headline prediction (highest probability)
+- **Strong** — name in this column means the Strong Prediction gate fired (high-conviction pick that confirms across stats)
+- **Conf** — confidence as stars: ★ coin flip · ★★ slight lean · ★★★ clear favourite · ★★★★ strong · ★★★★★ very strong
+- **Draw?** — "Y" means the Draw Gate flipped this match to Draw because xG and probability are very tight (only fires when `ENABLE_DRAW_GATE = True` in the model)
+
+**📊 League position**
+- **H Rank / A Rank** — current league rank for each team
+
+**📈 Season structure** *(how the team has performed all season)*
+- **H PPG / A PPG** — Points per game
+- **H GPG / A GPG** — Goals scored per game
+- **H GCPG / A GCPG** — Goals conceded per game
+
+**🔥 Recent form** *(last 5 matches)*
+- **H Form / A Form** — Last-5 PPG
+- **H Δ / A Δ** — Form drift: last-5 PPG minus season PPG. Positive = team is hot, negative = cold
+
+**🏟️ Venue**
+- **H @Home** — Home team's PPG when playing at home
+- **A @Away** — Away team's PPG when playing away
+
+**🎲 Win / Lose %** *(use these to filter accumulator picks)*
+- **H Win% / A Win%** — % of season matches won
+- **H Lose% / A Lose%** — % of season matches lost
+
+**⚽ BTTS / Over 2.5**
+- **BTTS%** — model probability both teams score
+- **BTTS** — Y/N flag, fires when match BTTS% is meaningfully above the league norm
+- **BTTS!** — *Confident* BTTS Y, fires when BTTS% ≥ 60% absolute (sharper accumulator signal)
+- **Lg BTTS** — League's historical BTTS rate (5-season average) for context
+- **O2.5%, O2.5, O2.5!, Lg O2.5** — Same logic for Over 2.5 goals
+
+---
+
+**Smart Filters** *(left sidebar — tick one or more, they stack with AND)*
+
+- **⭐ Strong Predictions Only** — only fixtures where Strong Prediction gate fired
+- **🎯 High Confidence** — probability margin (top minus second) ≥ 20pp
+- **🟢 xG Dominance** — match xG gap ≥ 0.6 (one team much stronger)
+- **🔵 Rank Gap (Top vs Bottom)** — league rank gap ≥ 10
+- **🎲 Acca Quality** — favourite has won ≥ 50% of season matches AND underdog has lost ≥ 40% of theirs
+- **🥅 Confident BTTS Y** — BTTS% ≥ 60% absolute (high-conviction BTTS picks)
+- **⚽ Confident Over 2.5** — Over 2.5% ≥ 60% absolute (high-conviction goal-fest picks)
+- **💪 All-In (Strong + High Conf)** — Strong Prediction + win margin ≥ 25pp — most conservative
+
+**Custom thresholds** — same idea but with your own slider values. Tick "Apply custom thresholds" to activate.
+""")
+
 st.markdown("---")
 
 
