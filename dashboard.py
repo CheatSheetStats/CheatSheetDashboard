@@ -581,14 +581,17 @@ else:
     # area (the metrics dashboard is now in the filter strip up top).
 
     # ── Star confidence mapping ────────────────────────────────────────────────
-    # Confidence Score is the probability margin (top minus second)
+    # Confidence Score is the probability margin (top minus second).
+    # Stars rendered in gold so they stand out from the surrounding numbers.
+    GOLD = "#fbbf24"  # tailwind amber-400 — readable against dark theme
     def stars_from_margin(m):
         if pd.isna(m):       return "-"
-        if m < 5:            return "★"
-        if m < 10:           return "★★"
-        if m < 20:           return "★★★"
-        if m < 35:           return "★★★★"
-        return "★★★★★"
+        if m < 5:            stars = "★"
+        elif m < 10:         stars = "★★"
+        elif m < 20:         stars = "★★★"
+        elif m < 35:         stars = "★★★★"
+        else:                stars = "★★★★★"
+        return f'<span style="color:{GOLD};">{stars}</span>'
 
     # ── Build display table ────────────────────────────────────────────────────
     # Logical column order matches the six-section thinking flow:
@@ -668,11 +671,30 @@ else:
     }, inplace=True)
 
     # ── Formatting ─────────────────────────────────────────────────────────────
-    pct_cols = ['H%', 'D%', 'A%', 'H Win%', 'A Win%', 'H Lose%', 'A Lose%',
-                'BTTS%', 'O2.5%']
-    for c in pct_cols:
+    # Plain percentages (no colour banding)
+    plain_pct_cols = ['H%', 'D%', 'A%', 'BTTS%', 'O2.5%']
+    for c in plain_pct_cols:
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
+
+    # Win% / Lose% get colour bands so accumulator-relevant cells pop:
+    #   ≥ 55% → green   (this team wins/loses a lot — strong signal)
+    #   < 30% → red     (this team rarely wins/loses — weak signal)
+    #   in-between → plain (mixed)
+    GREEN = "#4ade80"
+    RED   = "#f87171"
+    def _band_pct(x):
+        if pd.isna(x):
+            return "-"
+        s = f"{x:.1f}%"
+        if x >= 55:
+            return f'<span style="color:{GREEN};">{s}</span>'
+        if x < 30:
+            return f'<span style="color:{RED};">{s}</span>'
+        return s
+    for c in ['H Win%', 'A Win%', 'H Lose%', 'A Lose%']:
+        if c in table_df.columns:
+            table_df[c] = table_df[c].apply(_band_pct)
 
     two_dp_cols = ['H GPG', 'A GPG', 'H GCPG', 'A GCPG',
                    'H PPG', 'A PPG', 'H Form', 'A Form',
@@ -682,16 +704,18 @@ else:
             table_df[c] = table_df[c].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
 
     # Form & venue drift get a +/- sign AND colour-coding so direction is
-    # obvious at a glance. Green = team performing better than usual,
-    # red = worse than usual.
+    # obvious at a glance. A ±0.10 dead-band keeps small (probably-noise)
+    # drifts uncoloured. Green = team performing better than usual, red = worse.
+    DRIFT_DEAD_BAND = 0.10
     def _drift_html(x):
         if pd.isna(x):
             return "-"
-        if x > 0:
+        if x >= DRIFT_DEAD_BAND:
             return f'<span style="color:#4ade80;">+{x:.2f}</span>'
-        if x < 0:
+        if x <= -DRIFT_DEAD_BAND:
             return f'<span style="color:#f87171;">{x:.2f}</span>'
-        return "+0.00"  # neutral
+        # Within dead-band — show value plainly so the reader still sees it.
+        return f"{x:+.2f}"
     for c in ['H Δ', 'A Δ', 'H @H Δ', 'A @A Δ']:
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(_drift_html)
