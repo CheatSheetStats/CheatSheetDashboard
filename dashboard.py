@@ -84,6 +84,10 @@ st.markdown("""
     margin-bottom: 16px;
 }
 
+/* Trim Streamlit's default top padding so the title sits closer to the top */
+.block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+[data-testid="stExpander"] { margin-bottom: 4px; }
+
 /* ── Column section separators ──────────────────────────────────────────────
    Streamlit renders st.dataframe as a glide-data-grid canvas (so we can't
    target columns directly via CSS), but it exposes a row container we can
@@ -150,8 +154,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-st.title("⚽ Football Prediction Model Dashboard")
-st.caption("Showing Model v5 predictions")
+st.markdown(
+    '<div style="display: flex; align-items: baseline; gap: 12px; margin: 0 0 4px 0;">'
+    '<h1 style="margin: 0; font-size: 1.6rem;">⚽ Football Prediction Model</h1>'
+    '<span style="color: #888; font-size: 0.85rem;">Model v5 predictions</span>'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 # ── Key / Legend ──────────────────────────────────────────────────────────────
 with st.expander("📖 Key — what the columns and filters mean"):
@@ -271,19 +280,37 @@ else:
 # Sidebar: league + date filters
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="filter-strip">', unsafe_allow_html=True)
-st.markdown("### 🔍 Filters")
 
-# Row 1: leagues + dates
+# Row 1: leagues (with quick-toggle) + dates
 leagues = sorted(df['Excel Document'].dropna().unique().tolist())
-fcol1, fcol2, fcol3 = st.columns([5, 1, 1])
+
+# Quick-select state — defaults to "all on", flips when user clicks the chip
+if "leagues_selected" not in st.session_state:
+    st.session_state.leagues_selected = leagues
+
+fcol1, fcol2, fcol3, fcol4 = st.columns([6, 1, 1, 1])
 with fcol1:
-    selected_leagues = st.multiselect("Select Leagues", leagues, default=leagues)
+    selected_leagues = st.multiselect(
+        f"🔍 Leagues  ({len(st.session_state.leagues_selected)} of {len(leagues)})",
+        leagues,
+        default=st.session_state.leagues_selected,
+        key="leagues_widget",
+        label_visibility="visible",
+    )
+    st.session_state.leagues_selected = selected_leagues
+with fcol2:
+    if st.button("All", use_container_width=True, help="Select all leagues"):
+        st.session_state.leagues_selected = leagues
+        st.rerun()
+    if st.button("Clear", use_container_width=True, help="Clear all leagues"):
+        st.session_state.leagues_selected = []
+        st.rerun()
 if df['Match Date'].notna().any():
     min_date = df['Match Date'].min().date()
     max_date = df['Match Date'].max().date()
-    with fcol2:
-        start_date = st.date_input("From", min_date, min_value=min_date, max_value=max_date)
     with fcol3:
+        start_date = st.date_input("From", min_date, min_value=min_date, max_value=max_date)
+    with fcol4:
         end_date = st.date_input("To", max_date, min_value=min_date, max_value=max_date)
 else:
     start_date = end_date = None
@@ -292,8 +319,13 @@ else:
 # ──────────────────────────────────────────────────────────────────────────────
 # Smart filters — REBUILT for v5 signals
 # ──────────────────────────────────────────────────────────────────────────────
-st.markdown("**🎯 Smart Filters** &nbsp; <small>tick one or more — they stack with AND logic</small>",
-            unsafe_allow_html=True)
+st.markdown(
+    '<div style="margin: 6px 0 2px 0; font-size: 0.85rem; color: #aaa;">'
+    '<strong style="color: #ddd;">🎯 Smart Filters</strong> · '
+    'tick one or more — they stack with AND logic'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 FILTER_DEFS = [
     {
@@ -448,18 +480,31 @@ else:
     if smart_filter_active and smart_filter_desc:
         st.info(f"🎯 **Smart filter active** — {smart_filter_desc}")
 
-    # Key metrics row
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric(
-        "Fixtures shown", len(filtered_df),
-        delta=f"{len(filtered_df) - pre_filter_count} from smart filter" if smart_filter_active else None
-    )
-    col2.metric("Avg H%", f"{filtered_df['Home Win %'].mean():.1f}%")
-    col3.metric("Avg D%", f"{filtered_df['Draw %'].mean():.1f}%")
-    col4.metric("Avg A%", f"{filtered_df['Away Win %'].mean():.1f}%")
+    # Compact metrics strip — five figures on one tight line instead of five
+    # large st.metric cards.
     strong_count = int(filtered_df['Strong Prediction'].notna().sum())
-    col5.metric("Strong", f"{strong_count} ({strong_count / len(filtered_df) * 100:.1f}%)")
-    st.markdown("---")
+    delta_text = ""
+    if smart_filter_active:
+        delta = len(filtered_df) - pre_filter_count
+        delta_text = f' <span style="color:#888;">({delta:+d} after smart filter)</span>'
+
+    st.markdown(
+        '<div style="display: flex; gap: 28px; padding: 4px 0 6px 0; font-size: 0.9rem; '
+        'border-bottom: 1px solid #2a2d36; margin-bottom: 8px;">'
+        f'<span><span style="color:#888;">Fixtures</span> '
+        f'<strong>{len(filtered_df)}</strong>{delta_text}</span>'
+        f'<span><span style="color:#888;">Avg H%</span> '
+        f'<strong>{filtered_df["Home Win %"].mean():.1f}%</strong></span>'
+        f'<span><span style="color:#888;">Avg D%</span> '
+        f'<strong>{filtered_df["Draw %"].mean():.1f}%</strong></span>'
+        f'<span><span style="color:#888;">Avg A%</span> '
+        f'<strong>{filtered_df["Away Win %"].mean():.1f}%</strong></span>'
+        f'<span><span style="color:#888;">Strong</span> '
+        f'<strong>{strong_count}</strong> '
+        f'<span style="color:#888;">({strong_count / len(filtered_df) * 100:.1f}%)</span></span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     # ── Star confidence mapping ────────────────────────────────────────────────
     # Confidence Score is the probability margin (top minus second)
