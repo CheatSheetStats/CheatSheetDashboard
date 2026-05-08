@@ -692,9 +692,18 @@ else:
             table_df[c] = table_df[c].apply(lambda x: f"{int(x)}" if pd.notna(x) else "-")
 
     if 'Date' in table_df.columns:
-        table_df['Date'] = table_df['Date'].apply(
-            lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else "-"
-        )
+        # Times in source data are UTC. Convert to UK local time (handles
+        # BST/GMT automatically) so kickoffs display as the user expects.
+        def _fmt_kickoff(x):
+            if pd.isna(x):
+                return "-"
+            try:
+                if x.tzinfo is not None:
+                    x = x.tz_convert('Europe/London')
+            except Exception:
+                pass
+            return x.strftime('%Y-%m-%d %H:%M')
+        table_df['Date'] = table_df['Date'].apply(_fmt_kickoff)
 
     # Render via st.components.v1.html so the JS sort handler actually executes.
     # Streamlit's st.markdown strips <script> tags as a security measure, so the
