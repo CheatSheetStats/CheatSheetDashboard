@@ -284,10 +284,51 @@ def _build_mobile_cards_html(df: pd.DataFrame) -> str:
     .empty {
         text-align: center; color: #888; font-size: 0.9rem; padding: 40px 0;
     }
+    .sort-bar {
+        display: flex; align-items: center; gap: 8px;
+        margin-bottom: 10px; padding: 0 2px;
+    }
+    .sort-bar label {
+        font-size: 0.75rem; color: #888;
+        text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .sort-bar select {
+        flex: 1;
+        background: #1a1c22;
+        color: #e6e6e6;
+        border: 1px solid #2a2d36;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 0.85rem;
+        font-family: inherit;
+        appearance: none;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%23888' d='M0 0l5 6 5-6z'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        padding-right: 28px;
+    }
+    .sort-bar select:focus {
+        outline: none;
+        border-color: #6cb6ff;
+    }
     </style>"""
 
     if len(df) == 0:
         return css + '<div class="empty">No fixtures match the selected filters.</div>'
+
+    # Sort toolbar — shown above the card list. The dropdown triggers a
+    # client-side reorder of the existing card DOM (no Streamlit re-run).
+    sort_bar = (
+        '<div class="sort-bar">'
+        '<label for="sort">Sort:</label>'
+        '<select id="sort">'
+        '<option value="time">Time (earliest first)</option>'
+        '<option value="league">League (A→Z)</option>'
+        '<option value="confidence">Confidence (highest first)</option>'
+        '</select>'
+        '</div>'
+        '<div id="card-list">'
+    )
 
     def stars(margin):
         if pd.isna(margin): return ""
@@ -366,8 +407,21 @@ def _build_mobile_cards_html(df: pd.DataFrame) -> str:
         h_w, a_w   = row.get("Home Win % (Season)"), row.get("Away Win % (Season)")
         h_l, a_l   = row.get("Home Lose % (Season)"), row.get("Away Lose % (Season)")
 
+        # Sort keys — used by the client-side dropdown to reorder cards
+        # without re-rendering the whole iframe.
+        try:
+            ts_for_sort = match_dt.timestamp() if pd.notna(match_dt) and hasattr(match_dt, 'timestamp') else 0
+        except Exception:
+            ts_for_sort = 0
+        conf_for_sort = float(margin) if pd.notna(margin) else 0.0
+
         card = []
-        card.append(f'<div class="card{" strong-pick" if is_strong else ""}">')
+        card.append(
+            f'<div class="card{" strong-pick" if is_strong else ""}" '
+            f'data-league="{league}" '
+            f'data-time="{ts_for_sort}" '
+            f'data-conf="{conf_for_sort}">'
+        )
         card.append(f'<div class="card-header"><span>{date_str}</span><span>{league}</span></div>')
 
         card.append(
@@ -472,12 +526,11 @@ def _build_mobile_cards_html(df: pd.DataFrame) -> str:
 
     # Toggle script. After expanding/collapsing a card we tell Streamlit's
     # parent iframe to resize so the table page can grow with the content.
-    # Uses the same Streamlit.setFrameHeight bridge as components.html.
+    # Also handles client-side sorting from the dropdown.
     script = """<script>
     function syncHeight() {
         const h = document.documentElement.scrollHeight;
         if (window.parent && window.parent.postMessage) {
-            // Streamlit's Component bridge listens for this message shape.
             window.parent.postMessage(
                 { type: 'streamlit:setFrameHeight', height: h },
                 '*'
@@ -489,14 +542,39 @@ def _build_mobile_cards_html(df: pd.DataFrame) -> str:
         card.classList.toggle('expanded');
         const txt = btn.querySelector('.toggle-text');
         txt.textContent = card.classList.contains('expanded') ? 'Less stats' : 'More stats';
-        // Allow CSS transition to complete before measuring height
         setTimeout(syncHeight, 50);
     }
-    // Initial sync after layout settles.
-    window.addEventListener('load', () => setTimeout(syncHeight, 50));
+
+    function sortCards(mode) {
+        const list = document.getElementById('card-list');
+        if (!list) return;
+        const cards = Array.from(list.querySelectorAll('.card'));
+        cards.sort((a, b) => {
+            if (mode === 'league') {
+                return a.dataset.league.localeCompare(b.dataset.league);
+            }
+            if (mode === 'confidence') {
+                // highest confidence first
+                return parseFloat(b.dataset.conf) - parseFloat(a.dataset.conf);
+            }
+            // default: time, earliest first
+            return parseFloat(a.dataset.time) - parseFloat(b.dataset.time);
+        });
+        cards.forEach(c => list.appendChild(c));
+    }
+
+    // Initial sort: time (earliest first). Then attach the dropdown listener.
+    window.addEventListener('load', () => {
+        sortCards('time');
+        const sel = document.getElementById('sort');
+        if (sel) {
+            sel.addEventListener('change', e => sortCards(e.target.value));
+        }
+        setTimeout(syncHeight, 50);
+    });
     </script>"""
 
-    return css + "\n".join(cards_html) + script
+    return css + sort_bar + "\n".join(cards_html) + "</div>" + script
 
 
 
