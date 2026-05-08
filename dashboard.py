@@ -204,6 +204,20 @@ FILTER_DEFS = [
         "strong":  False,
     },
     {
+        "key":   "confident_btts",
+        "label": "🥅 Confident BTTS Y",
+        "desc":  "BTTS% ≥ 60% (absolute, league-independent)",
+        "numeric": [("BTTS %", ">=", 60)],
+        "strong":  False,
+    },
+    {
+        "key":   "confident_o25",
+        "label": "⚽ Confident Over 2.5",
+        "desc":  "Over 2.5% ≥ 60% (absolute, league-independent)",
+        "numeric": [("Over 2.5 Goals %", ">=", 60)],
+        "strong":  False,
+    },
+    {
         "key":   "all_in",
         "label": "💪 All-In (Strong + High Conf)",
         "desc":  "Strong Prediction AND win-margin ≥ 25pp — most conservative",
@@ -353,9 +367,9 @@ else:
         # 6. Win / Lose % — for accumulator filtering
         'Home Win % (Season)',  'Away Win % (Season)',
         'Home Lose % (Season)', 'Away Lose % (Season)',
-        # 7. BTTS / Over 2.5 — with league base rate context
-        'BTTS %', 'PredictionBTTS', 'League BTTS Rate',
-        'Over 2.5 Goals %', 'Over25YN', 'League O2.5 Rate',
+        # 7. BTTS / Over 2.5 — with league base rate context AND confident flags
+        'BTTS %', 'PredictionBTTS', 'Confident BTTS Y', 'League BTTS Rate',
+        'Over 2.5 Goals %', 'Over25YN', 'Confident O2.5 Y', 'League O2.5 Rate',
     ]
 
     available_columns = [c for c in display_columns if c in filtered_df.columns]
@@ -397,9 +411,11 @@ else:
         'Away Lose % (Season)':   'A Lose%',
         'BTTS %':                 'BTTS%',
         'PredictionBTTS':         'BTTS',
+        'Confident BTTS Y':       'BTTS!',
         'League BTTS Rate':       'Lg BTTS',
         'Over 2.5 Goals %':       'O2.5%',
         'Over25YN':               'O2.5',
+        'Confident O2.5 Y':       'O2.5!',
         'League O2.5 Rate':       'Lg O2.5',
     }, inplace=True)
 
