@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -572,18 +573,84 @@ else:
             lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else "-"
         )
 
-    # Render with HTML so the per-column section-separator CSS can take effect.
-    # We add a tiny vanilla-JS sort handler so the column headers are clickable
-    # for sorting (same UX as st.dataframe), while keeping the per-column
-    # section borders.
+    # Render via st.components.v1.html so the JS sort handler actually executes.
+    # Streamlit's st.markdown strips <script> tags as a security measure, so the
+    # table goes into a real iframe with its own CSS scope — that's why all the
+    # styling is bundled inline below rather than relying on the page CSS.
     html_table = table_df.to_html(index=False, escape=False, classes="bordered-table-inner")
-
-    # Mark the table with a unique id so the JS can find it.
     html_table = html_table.replace(
         '<table border="1" class="dataframe bordered-table-inner">',
         '<table id="bordered-sortable" class="dataframe bordered-table-inner">',
         1,
     )
+
+    # Inline CSS — these styles need to live inside the iframe.
+    iframe_styles = """
+    <style>
+        body {
+            margin: 0;
+            background: transparent;
+            color: #e6e6e6;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+        .table-wrap {
+            max-height: 1080px;
+            overflow: auto;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+        table#bordered-sortable {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 12px;
+        }
+        table#bordered-sortable thead th {
+            background: #2a2d36;
+            color: #fff;
+            text-align: center;
+            padding: 6px 8px;
+            border-bottom: 2px solid #555;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+        table#bordered-sortable thead th:hover { background: #3a3d46; }
+        table#bordered-sortable thead th.sort-asc::after  { content: ' ▲'; color: #6cb6ff; }
+        table#bordered-sortable thead th.sort-desc::after { content: ' ▼'; color: #6cb6ff; }
+        table#bordered-sortable thead th:not(.sort-asc):not(.sort-desc)::after {
+            content: ' ↕'; color: #555; font-size: 10px;
+        }
+        table#bordered-sortable tbody td {
+            text-align: center;
+            padding: 4px 6px;
+            border-bottom: 1px solid #333;
+            white-space: nowrap;
+        }
+        table#bordered-sortable tbody tr:nth-child(even) td { background: #1a1c22; }
+        table#bordered-sortable tbody tr:hover td           { background: #2c3038; }
+
+        /* Section separators — match the six logical column groups */
+        table#bordered-sortable th:nth-child(4),
+        table#bordered-sortable td:nth-child(4),
+        table#bordered-sortable th:nth-child(11),
+        table#bordered-sortable td:nth-child(11),
+        table#bordered-sortable th:nth-child(13),
+        table#bordered-sortable td:nth-child(13),
+        table#bordered-sortable th:nth-child(19),
+        table#bordered-sortable td:nth-child(19),
+        table#bordered-sortable th:nth-child(23),
+        table#bordered-sortable td:nth-child(23),
+        table#bordered-sortable th:nth-child(25),
+        table#bordered-sortable td:nth-child(25),
+        table#bordered-sortable th:nth-child(29),
+        table#bordered-sortable td:nth-child(29) {
+            border-right: 3px solid #6c7280 !important;
+        }
+    </style>
+    """
 
     sort_script = """
     <script>
@@ -594,18 +661,14 @@ else:
         const headers = table.querySelectorAll('thead th');
         let sortState = { col: null, dir: 1 };
 
-        // Detect numeric vs text per cell.
-        // Strips %, commas, ★ characters and tries to parse as float.
         function cellSortValue(cell) {
             const raw = cell.textContent.trim();
             if (raw === '-' || raw === '' || raw === 'nan' || raw === 'None') {
                 return { num: null, str: '' };
             }
-            // Star ratings — count the stars
             if (raw.includes('★')) {
                 return { num: (raw.match(/★/g) || []).length, str: raw };
             }
-            // Strip % sign and try numeric
             const cleaned = raw.replace(/[%,+]/g, '');
             const num = parseFloat(cleaned);
             if (!isNaN(num)) {
@@ -615,53 +678,38 @@ else:
         }
 
         headers.forEach((th, idx) => {
-            th.style.cursor = 'pointer';
-            th.style.userSelect = 'none';
-            const originalText = th.textContent;
             th.addEventListener('click', () => {
                 const dir = (sortState.col === idx) ? -sortState.dir : 1;
                 sortState = { col: idx, dir: dir };
 
                 const tbody = table.querySelector('tbody');
                 const rows = Array.from(tbody.querySelectorAll('tr'));
-
                 rows.sort((a, b) => {
                     const av = cellSortValue(a.cells[idx]);
                     const bv = cellSortValue(b.cells[idx]);
-                    // Nulls always sink to the bottom regardless of direction
                     if (av.num === null && av.str === '' && (bv.num !== null || bv.str !== '')) return 1;
                     if (bv.num === null && bv.str === '' && (av.num !== null || av.str !== '')) return -1;
-                    if (av.num !== null && bv.num !== null) {
-                        return (av.num - bv.num) * dir;
-                    }
+                    if (av.num !== null && bv.num !== null) return (av.num - bv.num) * dir;
                     return av.str.localeCompare(bv.str) * dir;
                 });
-
                 rows.forEach(r => tbody.appendChild(r));
 
-                // Update header arrows
-                headers.forEach((h, i) => {
-                    let txt = h.dataset.originalText || h.textContent;
-                    txt = txt.replace(/ [▲▼]$/, '');
-                    h.dataset.originalText = txt;
-                    if (i === idx) {
-                        h.textContent = txt + (dir > 0 ? ' ▲' : ' ▼');
-                    } else {
-                        h.textContent = txt;
-                    }
-                });
+                headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+                th.classList.add(dir > 0 ? 'sort-asc' : 'sort-desc');
             });
         });
     })();
     </script>
     """
 
-    st.markdown(
-        '<div class="bordered-table" style="max-height: 1100px; overflow: auto; '
-        'border: 1px solid #333; border-radius: 4px;">' + html_table + '</div>'
-        + sort_script,
-        unsafe_allow_html=True,
+    full_html = (
+        iframe_styles
+        + '<div class="table-wrap">'
+        + html_table
+        + '</div>'
+        + sort_script
     )
+    components.html(full_html, height=1100, scrolling=False)
 
     # ── Export ─────────────────────────────────────────────────────────────────
     st.subheader("💾 Export Filtered Data")
