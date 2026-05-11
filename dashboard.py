@@ -907,80 +907,73 @@ with left_col:
     # Custom Checklist — manual pick verification with mix-and-match conditions.
     # Each condition can be Off / Required / Bonus. Bonus checks contribute
     # toward a minimum-bonus-count threshold but aren't individually mandatory.
-    with st.expander("📋 Custom Checklist (manual verification)", expanded=False):
-        st.markdown(
-            '<div style="font-size:0.8rem;color:#aaa;margin-bottom:8px;">'
-            "Build your own pick-verification rules. Each condition can be "
-            "<b>Required</b> (pick must pass), <b>Bonus</b> (counts toward a minimum "
-            "threshold), or <b>Off</b>. A fixture matches if it passes all Required "
-            "checks AND at least the minimum number of Bonus checks. "
-            'Auto-hides Draw picks.</div>',
-            unsafe_allow_html=True,
-        )
+    # Rendered inline (not behind an expander) so it's always visible.
+    st.markdown(
+        '<div style="margin: 10px 0 4px 0; font-size: 0.85rem; color: #aaa;">'
+        '<strong style="color: #ddd;">📋 Custom Checklist</strong> · '
+        'set each condition to <span style="color:#f87171;">Required</span> '
+        '(must pass) or <span style="color:#fbbf24;">Bonus</span> '
+        '(contributes to a minimum threshold). Auto-hides Draw picks.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
-        CHECKLIST_CONDITIONS = [
-            {
-                "key": "home_pick",
-                "label": "🏠 Model picks home team",
-                "desc": "Model's pick is the home side",
-            },
-            {
-                "key": "away_pick",
-                "label": "✈️ Model picks away team",
-                "desc": "Model's pick is the away side",
-            },
-            {
-                "key": "ppg_advantage",
-                "label": "📈 Higher season PPG & GPG",
-                "desc": "Pick's season PPG > opponent's AND pick's GPG > opponent's",
-            },
-            {
-                "key": "better_form",
-                "label": "🔥 Better recent form",
-                "desc": "Pick's last-5 PPG > opponent's last-5 PPG",
-            },
-            {
-                "key": "venue_strength",
-                "label": "🏟️ Strong at relevant venue",
-                "desc": "Pick gets ≥ 1.5 PPG at the venue they're playing (home or away)",
-            },
-            {
-                "key": "win_lose_split",
-                "label": "🎯 Win%/Lose% gap",
-                "desc": "Pick wins ≥ 50% of season AND opponent loses ≥ 40% of season",
-            },
-        ]
+    CHECKLIST_CONDITIONS = [
+        {"key": "home_pick",     "label": "🏠 Home pick",
+         "desc": "Model's pick is the home side"},
+        {"key": "ppg_higher",    "label": "📈 Higher PPG",
+         "desc": "Pick's season PPG > opponent's season PPG"},
+        {"key": "gpg_higher",    "label": "⚽ Higher GPG (scores more)",
+         "desc": "Pick scores more goals per match than opponent"},
+        {"key": "gcpg_lower",    "label": "🛡️ Lower GCPG (concedes less)",
+         "desc": "Pick concedes fewer goals per match than opponent"},
+        {"key": "away_pick",     "label": "✈️ Away pick",
+         "desc": "Model's pick is the away side"},
+        {"key": "better_form",   "label": "🔥 Better recent form",
+         "desc": "Pick's last-5 PPG > opponent's last-5 PPG"},
+        {"key": "venue_strength","label": "🏟️ Strong at venue (≥1.5 PPG)",
+         "desc": "Pick gets ≥ 1.5 PPG at the venue they're playing (home or away)"},
+        {"key": "win_lose_split","label": "🎯 Win%≥50 + Opp Lose%≥40",
+         "desc": "Pick wins ≥ 50% of season AND opponent loses ≥ 40% of season"},
+    ]
 
-        # Render each condition with a 3-state radio (Off / Required / Bonus)
-        checklist_state = {}
-        # 2 conditions per row to keep the expander compact
-        for row_start in range(0, len(CHECKLIST_CONDITIONS), 2):
-            cols = st.columns(2)
-            for col, cond in zip(cols, CHECKLIST_CONDITIONS[row_start:row_start + 2]):
-                with col:
-                    state = st.radio(
-                        cond["label"],
-                        options=["Off", "Required", "Bonus"],
-                        index=0,
-                        key=f"chk_{cond['key']}_state",
-                        help=cond["desc"],
-                        horizontal=True,
-                    )
-                    checklist_state[cond["key"]] = state
+    # Render in 4 columns × 2 rows so all 8 conditions are visible at once
+    checklist_state = {}
+    for row_start in range(0, len(CHECKLIST_CONDITIONS), 4):
+        cols = st.columns(4)
+        for col, cond in zip(cols, CHECKLIST_CONDITIONS[row_start:row_start + 4]):
+            with col:
+                state = st.radio(
+                    cond["label"],
+                    options=["Off", "Required", "Bonus"],
+                    index=0,
+                    key=f"chk_{cond['key']}_state",
+                    help=cond["desc"],
+                    horizontal=True,
+                )
+                checklist_state[cond["key"]] = state
 
-        # Minimum bonus count — only meaningful when at least one Bonus is set
-        bonus_count = sum(1 for s in checklist_state.values() if s == "Bonus")
+    # Bottom row — slider + apply button
+    bonus_count = sum(1 for s in checklist_state.values() if s == "Bonus")
+    any_active = any(s != "Off" for s in checklist_state.values())
+    slider_col, apply_col = st.columns([3, 1])
+    with slider_col:
         if bonus_count > 0:
             min_bonus = st.slider(
-                f"Minimum bonus checks to pass (out of {bonus_count} bonus)",
+                f"Minimum bonus checks to pass (out of {bonus_count})",
                 min_value=0, max_value=bonus_count,
                 value=min(bonus_count, max(1, bonus_count - 1)),
             )
         else:
             min_bonus = 0
-
-        any_active = any(s != "Off" for s in checklist_state.values())
-        use_checklist = st.checkbox("Apply custom checklist", value=False,
+            st.markdown(
+                '<div style="color:#666;font-size:0.8rem;padding:8px 0;">'
+                'No Bonus conditions set — minimum threshold not applicable.</div>',
+                unsafe_allow_html=True,
+            )
+    with apply_col:
+        st.markdown('<div style="height: 26px;"></div>', unsafe_allow_html=True)
+        use_checklist = st.checkbox("Apply checklist", value=False,
                                      disabled=not any_active)
 
     # Placeholder for the metrics dashboard.
