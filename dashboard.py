@@ -158,18 +158,18 @@ st.markdown("""
 */
 .bordered-table th:nth-child(4),    /* end of section 1 (Away)        */
 .bordered-table td:nth-child(4),
-.bordered-table th:nth-child(11),   /* end of section 2 (Draw?)       */
-.bordered-table td:nth-child(11),
-.bordered-table th:nth-child(13),   /* end of section 3 (A Rank)      */
-.bordered-table td:nth-child(13),
-.bordered-table th:nth-child(19),   /* end of section 4 (A GCPG)      */
-.bordered-table td:nth-child(19),
-.bordered-table th:nth-child(23),   /* end of section 5 (A Δ)         */
-.bordered-table td:nth-child(23),
-.bordered-table th:nth-child(25),   /* end of section 6 (A @Away)     */
-.bordered-table td:nth-child(25),
-.bordered-table th:nth-child(29),   /* end of section 7 (A Lose%)     */
-.bordered-table td:nth-child(29) {
+.bordered-table th:nth-child(12),   /* end of section 2 (Score)       */
+.bordered-table td:nth-child(12),
+.bordered-table th:nth-child(14),   /* end of section 3 (A Rank)      */
+.bordered-table td:nth-child(14),
+.bordered-table th:nth-child(20),   /* end of section 4 (A GCPG)      */
+.bordered-table td:nth-child(20),
+.bordered-table th:nth-child(24),   /* end of section 5 (A Δ)         */
+.bordered-table td:nth-child(24),
+.bordered-table th:nth-child(26),   /* end of section 6 (A @Away)     */
+.bordered-table td:nth-child(26),
+.bordered-table th:nth-child(30),   /* end of section 7 (A Lose%)     */
+.bordered-table td:nth-child(30) {
     border-right: 3px solid #6c7280 !important;
 }
 </style>
@@ -736,6 +736,57 @@ else:
     df['_fav_match_xg_adv'] = np.nan
 
 
+# Per-fixture Custom Checklist condition flags. Computed for every fixture
+# so the table can always display a Score column, regardless of whether the
+# checklist filter is currently applied. Each `_chk_*` column is True/False
+# for the favourite-side pick (NaN for Draw picks).
+def _compute_checklist_conditions(df: pd.DataFrame) -> None:
+    pick = df['Model Prediction'].astype(str).str.strip()
+    home_t = df['Home Team'].astype(str).str.strip()
+    away_t = df['Away Team'].astype(str).str.strip()
+    pick_is_home = pick == home_t
+    pick_is_away = pick == away_t
+
+    def _ps(home_col, away_col):
+        if home_col not in df.columns or away_col not in df.columns:
+            return pd.Series(np.nan, index=df.index)
+        return pd.Series(
+            np.where(pick_is_home, df[home_col],
+                np.where(pick_is_away, df[away_col], np.nan)),
+            index=df.index)
+    def _os(home_col, away_col):
+        if home_col not in df.columns or away_col not in df.columns:
+            return pd.Series(np.nan, index=df.index)
+        return pd.Series(
+            np.where(pick_is_home, df[away_col],
+                np.where(pick_is_away, df[home_col], np.nan)),
+            index=df.index)
+
+    df['_chk_ppg_higher']     = (_ps("Home PPG (Season)", "Away PPG (Season)") >
+                                 _os("Home PPG (Season)", "Away PPG (Season)"))
+    df['_chk_gpg_higher']     = (_ps("Home Team GPG", "Away Team GPG") >
+                                 _os("Home Team GPG", "Away Team GPG"))
+    df['_chk_gcpg_lower']     = (_ps("Home Team GCPG", "Away Team GCPG") <
+                                 _os("Home Team GCPG", "Away Team GCPG"))
+    df['_chk_better_form']    = (_ps("Home PPG (Last 5)", "Away PPG (Last 5)") >
+                                 _os("Home PPG (Last 5)", "Away PPG (Last 5)"))
+    df['_chk_venue_stronger'] = (_ps("Home PPG (At Home)", "Away PPG (Away)") >
+                                 _os("Home PPG (At Home)", "Away PPG (Away)"))
+    df['_chk_win_lose_gap']   = ((_ps("Home Win % (Season)", "Away Win % (Season)") >
+                                  _os("Home Win % (Season)", "Away Win % (Season)")) &
+                                 (_ps("Home Lose % (Season)", "Away Lose % (Season)") <
+                                  _os("Home Lose % (Season)", "Away Lose % (Season)")))
+
+    # Score = number of conditions passing (0-6). Draw picks get NaN.
+    chk_cols = ['_chk_ppg_higher', '_chk_gpg_higher', '_chk_gcpg_lower',
+                '_chk_better_form', '_chk_venue_stronger', '_chk_win_lose_gap']
+    is_draw = pick == "Draw"
+    score = df[chk_cols].fillna(False).sum(axis=1)
+    df['_chk_score'] = score.where(~is_draw, np.nan)
+
+_compute_checklist_conditions(df)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Sidebar: league + date filters
 # ──────────────────────────────────────────────────────────────────────────────
@@ -908,44 +959,66 @@ with left_col:
     # Each condition can be Off / Required / Bonus. Bonus checks contribute
     # toward a minimum-bonus-count threshold but aren't individually mandatory.
     # Rendered inline (not behind an expander) so it's always visible.
-    st.markdown(
-        '<div style="margin: 10px 0 4px 0; font-size: 0.85rem; color: #aaa;">'
-        '<strong style="color: #ddd;">📋 Custom Checklist</strong> · '
-        'set each condition to <span style="color:#f87171;">Required</span> '
-        '(must pass) or <span style="color:#fbbf24;">Bonus</span> '
-        '(contributes to a minimum threshold). Auto-hides Draw picks.'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    # The compact-checklist CSS shrinks the radio buttons so all 6 conditions
+    # fit in ~half the vertical space Streamlit's defaults would use.
+    st.markdown("""
+    <style>
+    .checklist-section [data-testid="stRadio"] > label {
+        font-size: 0.78rem !important;
+        padding-bottom: 1px !important;
+        margin-bottom: 1px !important;
+    }
+    .checklist-section [data-testid="stRadio"] [role="radiogroup"] {
+        gap: 4px !important;
+    }
+    .checklist-section [data-testid="stRadio"] [role="radiogroup"] label {
+        padding: 1px 4px !important;
+        margin-right: 0 !important;
+        font-size: 0.75rem !important;
+    }
+    .checklist-section [data-testid="stRadio"] [role="radiogroup"] label > div:first-child {
+        transform: scale(0.85);
+    }
+    .checklist-section [data-testid="stTooltipIcon"] { display: none !important; }
+    .checklist-section [data-testid="stSlider"] label {
+        font-size: 0.78rem !important;
+    }
+    </style>
+    <div class="checklist-section">
+    """, unsafe_allow_html=True)
 
-    # Picked-side toggle (separate from the Off/Required/Bonus conditions —
-    # it's always applied, you just choose which side(s) you're considering).
-    side_col, _, _, _ = st.columns(4)
+    # Title + picked-side toggle on the same row to save vertical space
+    title_col, side_col = st.columns([2, 1])
+    with title_col:
+        st.markdown(
+            '<div style="margin: 8px 0 4px 0; font-size: 0.85rem; color: #aaa; line-height: 1.4;">'
+            '<strong style="color: #ddd;">📋 Custom Checklist</strong> · '
+            '<span style="color:#f87171;">Required</span> = must pass · '
+            '<span style="color:#fbbf24;">Bonus</span> = counts toward threshold · '
+            'auto-hides Draw picks'
+            '</div>',
+            unsafe_allow_html=True,
+        )
     with side_col:
         picked_side = st.radio(
-            "🏟️ Picked side",
+            "Picked side",
             options=["Home only", "Both", "Away only"],
             index=1,
             horizontal=True,
-            help="Which side of the model's pick to consider. 'Both' = home or away.",
+            label_visibility="collapsed",
+            help="Which side(s) to consider — left/middle/right = Home/Both/Away",
         )
 
     CHECKLIST_CONDITIONS = [
-        {"key": "ppg_higher",     "label": "📈 Higher PPG",
-         "desc": "Pick's season PPG > opponent's season PPG"},
-        {"key": "gpg_higher",     "label": "⚽ Higher GPG (scores more)",
-         "desc": "Pick scores more goals per match than opponent"},
-        {"key": "gcpg_lower",     "label": "🛡️ Lower GCPG (concedes less)",
-         "desc": "Pick concedes fewer goals per match than opponent"},
-        {"key": "better_form",    "label": "🔥 Better recent form",
-         "desc": "Pick's last-5 PPG > opponent's last-5 PPG"},
-        {"key": "venue_stronger", "label": "🏟️ Better venue record",
-         "desc": "Pick's PPG at this venue (home or away) > opponent's PPG at their venue"},
-        {"key": "win_lose_gap",   "label": "🎯 Wins more, loses less",
-         "desc": "Pick has higher season Win% AND lower season Lose% than opponent"},
+        {"key": "ppg_higher",     "label": "📈 Higher PPG"},
+        {"key": "gpg_higher",     "label": "⚽ Higher GPG"},
+        {"key": "gcpg_lower",     "label": "🛡️ Lower GCPG"},
+        {"key": "better_form",    "label": "🔥 Better form"},
+        {"key": "venue_stronger", "label": "🏟️ Better venue"},
+        {"key": "win_lose_gap",   "label": "🎯 Wins more, loses less"},
     ]
 
-    # Render in 3 columns × 2 rows so all 6 conditions are visible at once
+    # 3 columns × 2 rows of conditions
     checklist_state = {}
     for row_start in range(0, len(CHECKLIST_CONDITIONS), 3):
         cols = st.columns(3)
@@ -956,7 +1029,6 @@ with left_col:
                     options=["Off", "Required", "Bonus"],
                     index=0,
                     key=f"chk_{cond['key']}_state",
-                    help=cond["desc"],
                     horizontal=True,
                 )
                 checklist_state[cond["key"]] = state
@@ -971,21 +1043,18 @@ with left_col:
     with slider_col:
         if bonus_count > 0:
             min_bonus = st.slider(
-                f"Minimum bonus checks to pass (out of {bonus_count})",
+                f"Minimum bonus checks (of {bonus_count})",
                 min_value=0, max_value=bonus_count,
                 value=min(bonus_count, max(1, bonus_count - 1)),
             )
         else:
             min_bonus = 0
-            st.markdown(
-                '<div style="color:#666;font-size:0.8rem;padding:8px 0;">'
-                'No Bonus conditions set — minimum threshold not applicable.</div>',
-                unsafe_allow_html=True,
-            )
     with apply_col:
-        st.markdown('<div style="height: 26px;"></div>', unsafe_allow_html=True)
+        st.markdown('<div style="height: 22px;"></div>', unsafe_allow_html=True)
         use_checklist = st.checkbox("Apply checklist", value=False,
                                      disabled=not any_active)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # Placeholder for the metrics dashboard.
     # Filled below, after the filter logic computes filtered_df.
@@ -1047,62 +1116,32 @@ if use_custom:
         (filtered_df['_dog_season_lose'].fillna(0)  >= custom_dog_lose)
     )
 
-# Custom checklist evaluation. Each condition produces a boolean Series.
-# Required conditions become AND-mask additions. Bonus conditions are summed
-# per row; the row passes if its bonus count >= min_bonus.
-# The picked_side toggle is always applied — it restricts which side(s) qualify.
+# Custom checklist evaluation. Reads the precomputed _chk_* condition flags
+# (set earlier on every row of df) and applies Required/Bonus logic plus the
+# picked-side toggle.
 if use_checklist and any_active:
     smart_filter_active = True
 
     pick = filtered_df['Model Prediction'].astype(str).str.strip()
-    home_t = filtered_df['Home Team'].astype(str).str.strip()
-    away_t = filtered_df['Away Team'].astype(str).str.strip()
-    pick_is_home = pick == home_t
-    pick_is_away = pick == away_t
-    # Auto-hide Draw picks since the checklist tests favourite-side stats
+    pick_is_home = pick == filtered_df['Home Team'].astype(str).str.strip()
+    pick_is_away = pick == filtered_df['Away Team'].astype(str).str.strip()
     not_a_draw = pick != "Draw"
 
-    # Picked-side toggle
     if picked_side == "Home only":
         side_mask = pick_is_home
     elif picked_side == "Away only":
         side_mask = pick_is_away
-    else:  # "Both"
+    else:
         side_mask = pick_is_home | pick_is_away
 
-    def _pick_side(home_col, away_col):
-        return pd.Series(
-            np.where(pick_is_home, filtered_df[home_col],
-                np.where(pick_is_away, filtered_df[away_col], np.nan)),
-            index=filtered_df.index
-        )
-    def _opp_side(home_col, away_col):
-        return pd.Series(
-            np.where(pick_is_home, filtered_df[away_col],
-                np.where(pick_is_away, filtered_df[home_col], np.nan)),
-            index=filtered_df.index
-        )
-
-    # Compute each condition's pass/fail per row
-    conditions = {
-        "ppg_higher":      _pick_side("Home PPG (Season)", "Away PPG (Season)") >
-                           _opp_side("Home PPG (Season)", "Away PPG (Season)"),
-        "gpg_higher":      _pick_side("Home Team GPG", "Away Team GPG") >
-                           _opp_side("Home Team GPG", "Away Team GPG"),
-        "gcpg_lower":      _pick_side("Home Team GCPG", "Away Team GCPG") <
-                           _opp_side("Home Team GCPG", "Away Team GCPG"),
-        "better_form":     _pick_side("Home PPG (Last 5)", "Away PPG (Last 5)") >
-                           _opp_side("Home PPG (Last 5)", "Away PPG (Last 5)"),
-        # Venue: pick's PPG at THEIR venue vs opp's PPG at THEIR venue
-        # When pick is home → pick uses Home PPG (At Home), opp uses Away PPG (Away)
-        # When pick is away → pick uses Away PPG (Away), opp uses Home PPG (At Home)
-        # The _pick_side / _opp_side helpers handle the swap based on pick_is_home.
-        "venue_stronger":  _pick_side("Home PPG (At Home)", "Away PPG (Away)") >
-                           _opp_side("Home PPG (At Home)", "Away PPG (Away)"),
-        "win_lose_gap":    (_pick_side("Home Win % (Season)", "Away Win % (Season)") >
-                            _opp_side("Home Win % (Season)", "Away Win % (Season)")) &
-                           (_pick_side("Home Lose % (Season)", "Away Lose % (Season)") <
-                            _opp_side("Home Lose % (Season)", "Away Lose % (Season)")),
+    # Map config keys to the precomputed column names
+    cond_to_col = {
+        "ppg_higher":     "_chk_ppg_higher",
+        "gpg_higher":     "_chk_gpg_higher",
+        "gcpg_lower":     "_chk_gcpg_lower",
+        "better_form":    "_chk_better_form",
+        "venue_stronger": "_chk_venue_stronger",
+        "win_lose_gap":   "_chk_win_lose_gap",
     }
 
     required_mask = pd.Series(True, index=filtered_df.index)
@@ -1110,11 +1149,13 @@ if use_checklist and any_active:
     required_descs = []
     bonus_descs = []
     for key, state in checklist_state.items():
+        col = cond_to_col[key]
+        condition = filtered_df[col].fillna(False)
         if state == "Required":
-            required_mask &= conditions[key].fillna(False)
+            required_mask &= condition
             required_descs.append(key)
         elif state == "Bonus":
-            bonus_score += conditions[key].fillna(False).astype(int)
+            bonus_score += condition.astype(int)
             bonus_descs.append(key)
 
     bonus_pass = bonus_score >= min_bonus if bonus_descs else pd.Series(True, index=filtered_df.index)
@@ -1238,7 +1279,7 @@ else:
         # 2. Probabilities
         'Home Win %', 'Draw %', 'Away Win %',
         # 3. Prediction (border before this section)
-        'Model Prediction', 'Strong Prediction', 'Confidence Score',
+        'Model Prediction', 'Strong Prediction', 'Confidence Score', '_chk_score',
         # 4. Season structure
         'Home PPG (Season)',  'Away PPG (Season)',
         'Home Team GPG',      'Away Team GPG',
@@ -1263,6 +1304,23 @@ else:
     if 'Confidence Score' in table_df.columns:
         table_df['Confidence Score'] = table_df['Confidence Score'].apply(stars_from_margin)
 
+    # Format checklist score "N/6" with colour banding
+    #   5-6 → green (a strong pick across the board)
+    #   3-4 → neutral (mixed)
+    #   0-2 → red (weak across most criteria)
+    #   draw picks (NaN) → dash
+    if '_chk_score' in table_df.columns:
+        def _fmt_score(v):
+            if pd.isna(v):
+                return "-"
+            v = int(v)
+            if v >= 5:
+                return f'<span style="color:#4ade80;font-weight:600;">{v}/6</span>'
+            if v <= 2:
+                return f'<span style="color:#f87171;">{v}/6</span>'
+            return f"{v}/6"
+        table_df['_chk_score'] = table_df['_chk_score'].apply(_fmt_score)
+
     table_df.rename(columns={
         'Match Date':             'Date',
         'Excel Document':         'League',
@@ -1276,6 +1334,7 @@ else:
         'Model Prediction':       'Pick',
         'Strong Prediction':      'Strong',
         'Confidence Score':       'Conf',
+        '_chk_score':             'Score',
         'Home PPG (Season)':      'H PPG',
         'Away PPG (Season)':      'A PPG',
         'Home Team GPG':          'H GPG',
@@ -1426,12 +1485,12 @@ else:
              1.  Date | League | Home | Away              ← border after 4
              2.  H Rank | A Rank                          ← border after 6
              3.  H% | D% | A%                             ← border after 9
-             4.  Pick | Strong | Conf                     ← border after 12
-             5.  H/A PPG | H/A GPG | H/A GCPG             ← border after 18
-             6.  H Form | A Form | H Δ | A Δ              ← border after 22
-             7.  H @Home | A @Away | H @H Δ | A @A Δ      ← border after 26
-             8.  H Win% | A Lose%                         ← border after 28
-             9.  H Lose% | A Win%                         ← border after 30
+             4.  Pick | Strong | Conf | Score             ← border after 13
+             5.  H/A PPG | H/A GPG | H/A GCPG             ← border after 19
+             6.  H Form | A Form | H Δ | A Δ              ← border after 23
+             7.  H @Home | A @Away | H @H Δ | A @A Δ      ← border after 27
+             8.  H Win% | A Lose%                         ← border after 29
+             9.  H Lose% | A Win%                         ← border after 31
             10.  BTTS% | O2.5%                            (no trailing border)
         */
         table#bordered-sortable th:nth-child(4),
@@ -1440,18 +1499,18 @@ else:
         table#bordered-sortable td:nth-child(6),
         table#bordered-sortable th:nth-child(9),
         table#bordered-sortable td:nth-child(9),
-        table#bordered-sortable th:nth-child(12),
-        table#bordered-sortable td:nth-child(12),
-        table#bordered-sortable th:nth-child(18),
-        table#bordered-sortable td:nth-child(18),
-        table#bordered-sortable th:nth-child(22),
-        table#bordered-sortable td:nth-child(22),
-        table#bordered-sortable th:nth-child(26),
-        table#bordered-sortable td:nth-child(26),
-        table#bordered-sortable th:nth-child(28),
-        table#bordered-sortable td:nth-child(28),
-        table#bordered-sortable th:nth-child(30),
-        table#bordered-sortable td:nth-child(30) {
+        table#bordered-sortable th:nth-child(13),
+        table#bordered-sortable td:nth-child(13),
+        table#bordered-sortable th:nth-child(19),
+        table#bordered-sortable td:nth-child(19),
+        table#bordered-sortable th:nth-child(23),
+        table#bordered-sortable td:nth-child(23),
+        table#bordered-sortable th:nth-child(27),
+        table#bordered-sortable td:nth-child(27),
+        table#bordered-sortable th:nth-child(29),
+        table#bordered-sortable td:nth-child(29),
+        table#bordered-sortable th:nth-child(31),
+        table#bordered-sortable td:nth-child(31) {
             border-right: 3px solid #6c7280 !important;
         }
     </style>
