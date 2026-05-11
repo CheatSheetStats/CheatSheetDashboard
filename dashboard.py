@@ -918,30 +918,38 @@ with left_col:
         unsafe_allow_html=True,
     )
 
+    # Picked-side toggle (separate from the Off/Required/Bonus conditions —
+    # it's always applied, you just choose which side(s) you're considering).
+    side_col, _, _, _ = st.columns(4)
+    with side_col:
+        picked_side = st.radio(
+            "🏟️ Picked side",
+            options=["Home only", "Both", "Away only"],
+            index=1,
+            horizontal=True,
+            help="Which side of the model's pick to consider. 'Both' = home or away.",
+        )
+
     CHECKLIST_CONDITIONS = [
-        {"key": "home_pick",     "label": "🏠 Home pick",
-         "desc": "Model's pick is the home side"},
-        {"key": "ppg_higher",    "label": "📈 Higher PPG",
+        {"key": "ppg_higher",     "label": "📈 Higher PPG",
          "desc": "Pick's season PPG > opponent's season PPG"},
-        {"key": "gpg_higher",    "label": "⚽ Higher GPG (scores more)",
+        {"key": "gpg_higher",     "label": "⚽ Higher GPG (scores more)",
          "desc": "Pick scores more goals per match than opponent"},
-        {"key": "gcpg_lower",    "label": "🛡️ Lower GCPG (concedes less)",
+        {"key": "gcpg_lower",     "label": "🛡️ Lower GCPG (concedes less)",
          "desc": "Pick concedes fewer goals per match than opponent"},
-        {"key": "away_pick",     "label": "✈️ Away pick",
-         "desc": "Model's pick is the away side"},
-        {"key": "better_form",   "label": "🔥 Better recent form",
+        {"key": "better_form",    "label": "🔥 Better recent form",
          "desc": "Pick's last-5 PPG > opponent's last-5 PPG"},
-        {"key": "venue_strength","label": "🏟️ Strong at venue (≥1.5 PPG)",
-         "desc": "Pick gets ≥ 1.5 PPG at the venue they're playing (home or away)"},
-        {"key": "win_lose_split","label": "🎯 Win%≥50 + Opp Lose%≥40",
-         "desc": "Pick wins ≥ 50% of season AND opponent loses ≥ 40% of season"},
+        {"key": "venue_stronger", "label": "🏟️ Better venue record",
+         "desc": "Pick's PPG at this venue (home or away) > opponent's PPG at their venue"},
+        {"key": "win_lose_gap",   "label": "🎯 Wins more, loses less",
+         "desc": "Pick has higher season Win% AND lower season Lose% than opponent"},
     ]
 
-    # Render in 4 columns × 2 rows so all 8 conditions are visible at once
+    # Render in 3 columns × 2 rows so all 6 conditions are visible at once
     checklist_state = {}
-    for row_start in range(0, len(CHECKLIST_CONDITIONS), 4):
-        cols = st.columns(4)
-        for col, cond in zip(cols, CHECKLIST_CONDITIONS[row_start:row_start + 4]):
+    for row_start in range(0, len(CHECKLIST_CONDITIONS), 3):
+        cols = st.columns(3)
+        for col, cond in zip(cols, CHECKLIST_CONDITIONS[row_start:row_start + 3]):
             with col:
                 state = st.radio(
                     cond["label"],
@@ -955,7 +963,10 @@ with left_col:
 
     # Bottom row — slider + apply button
     bonus_count = sum(1 for s in checklist_state.values() if s == "Bonus")
-    any_active = any(s != "Off" for s in checklist_state.values())
+    any_active = (
+        any(s != "Off" for s in checklist_state.values())
+        or picked_side != "Both"
+    )
     slider_col, apply_col = st.columns([3, 1])
     with slider_col:
         if bonus_count > 0:
@@ -1039,6 +1050,7 @@ if use_custom:
 # Custom checklist evaluation. Each condition produces a boolean Series.
 # Required conditions become AND-mask additions. Bonus conditions are summed
 # per row; the row passes if its bonus count >= min_bonus.
+# The picked_side toggle is always applied — it restricts which side(s) qualify.
 if use_checklist and any_active:
     smart_filter_active = True
 
@@ -1050,30 +1062,47 @@ if use_checklist and any_active:
     # Auto-hide Draw picks since the checklist tests favourite-side stats
     not_a_draw = pick != "Draw"
 
-    def _pick_side(home_col, away_col):
-        return np.where(pick_is_home, filtered_df[home_col],
-                np.where(pick_is_away, filtered_df[away_col], np.nan))
+    # Picked-side toggle
+    if picked_side == "Home only":
+        side_mask = pick_is_home
+    elif picked_side == "Away only":
+        side_mask = pick_is_away
+    else:  # "Both"
+        side_mask = pick_is_home | pick_is_away
 
-    pick_PPG     = _pick_side("Home PPG (Season)", "Away PPG (Season)")
-    opp_PPG      = _pick_side("Away PPG (Season)", "Home PPG (Season)")
-    pick_GPG     = _pick_side("Home Team GPG", "Away Team GPG")
-    opp_GPG      = _pick_side("Away Team GPG", "Home Team GPG")
-    pick_Form    = _pick_side("Home PPG (Last 5)", "Away PPG (Last 5)")
-    opp_Form     = _pick_side("Away PPG (Last 5)", "Home PPG (Last 5)")
-    pick_Venue   = _pick_side("Home PPG (At Home)", "Away PPG (Away)")
-    pick_WinPct  = _pick_side("Home Win % (Season)", "Away Win % (Season)")
-    opp_LosePct  = _pick_side("Away Lose % (Season)", "Home Lose % (Season)")
+    def _pick_side(home_col, away_col):
+        return pd.Series(
+            np.where(pick_is_home, filtered_df[home_col],
+                np.where(pick_is_away, filtered_df[away_col], np.nan)),
+            index=filtered_df.index
+        )
+    def _opp_side(home_col, away_col):
+        return pd.Series(
+            np.where(pick_is_home, filtered_df[away_col],
+                np.where(pick_is_away, filtered_df[home_col], np.nan)),
+            index=filtered_df.index
+        )
 
     # Compute each condition's pass/fail per row
     conditions = {
-        "home_pick":        pick_is_home,
-        "away_pick":        pick_is_away,
-        "ppg_advantage":    (pd.Series(pick_PPG, index=filtered_df.index) > pd.Series(opp_PPG, index=filtered_df.index)) &
-                            (pd.Series(pick_GPG, index=filtered_df.index) > pd.Series(opp_GPG, index=filtered_df.index)),
-        "better_form":      pd.Series(pick_Form, index=filtered_df.index) > pd.Series(opp_Form, index=filtered_df.index),
-        "venue_strength":   pd.Series(pick_Venue, index=filtered_df.index) >= 1.5,
-        "win_lose_split":   (pd.Series(pick_WinPct, index=filtered_df.index) >= 50) &
-                            (pd.Series(opp_LosePct, index=filtered_df.index) >= 40),
+        "ppg_higher":      _pick_side("Home PPG (Season)", "Away PPG (Season)") >
+                           _opp_side("Home PPG (Season)", "Away PPG (Season)"),
+        "gpg_higher":      _pick_side("Home Team GPG", "Away Team GPG") >
+                           _opp_side("Home Team GPG", "Away Team GPG"),
+        "gcpg_lower":      _pick_side("Home Team GCPG", "Away Team GCPG") <
+                           _opp_side("Home Team GCPG", "Away Team GCPG"),
+        "better_form":     _pick_side("Home PPG (Last 5)", "Away PPG (Last 5)") >
+                           _opp_side("Home PPG (Last 5)", "Away PPG (Last 5)"),
+        # Venue: pick's PPG at THEIR venue vs opp's PPG at THEIR venue
+        # When pick is home → pick uses Home PPG (At Home), opp uses Away PPG (Away)
+        # When pick is away → pick uses Away PPG (Away), opp uses Home PPG (At Home)
+        # The _pick_side / _opp_side helpers handle the swap based on pick_is_home.
+        "venue_stronger":  _pick_side("Home PPG (At Home)", "Away PPG (Away)") >
+                           _opp_side("Home PPG (At Home)", "Away PPG (Away)"),
+        "win_lose_gap":    (_pick_side("Home Win % (Season)", "Away Win % (Season)") >
+                            _opp_side("Home Win % (Season)", "Away Win % (Season)")) &
+                           (_pick_side("Home Lose % (Season)", "Away Lose % (Season)") <
+                            _opp_side("Home Lose % (Season)", "Away Lose % (Season)")),
     }
 
     required_mask = pd.Series(True, index=filtered_df.index)
@@ -1089,9 +1118,11 @@ if use_checklist and any_active:
             bonus_descs.append(key)
 
     bonus_pass = bonus_score >= min_bonus if bonus_descs else pd.Series(True, index=filtered_df.index)
-    combined_mask &= not_a_draw & required_mask & bonus_pass
+    combined_mask &= not_a_draw & side_mask & required_mask & bonus_pass
 
     summary_parts = []
+    if picked_side != "Both":
+        summary_parts.append(f"Side: {picked_side}")
     if required_descs:
         summary_parts.append(f"Required: {', '.join(required_descs)}")
     if bonus_descs:
