@@ -904,6 +904,85 @@ with left_col:
             custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
             use_custom      = st.checkbox("Apply custom thresholds", value=False)
 
+    # Custom Checklist — manual pick verification with mix-and-match conditions.
+    # Each condition can be Off / Required / Bonus. Bonus checks contribute
+    # toward a minimum-bonus-count threshold but aren't individually mandatory.
+    with st.expander("📋 Custom Checklist (manual verification)", expanded=False):
+        st.markdown(
+            '<div style="font-size:0.8rem;color:#aaa;margin-bottom:8px;">'
+            "Build your own pick-verification rules. Each condition can be "
+            "<b>Required</b> (pick must pass), <b>Bonus</b> (counts toward a minimum "
+            "threshold), or <b>Off</b>. A fixture matches if it passes all Required "
+            "checks AND at least the minimum number of Bonus checks. "
+            'Auto-hides Draw picks.</div>',
+            unsafe_allow_html=True,
+        )
+
+        CHECKLIST_CONDITIONS = [
+            {
+                "key": "home_pick",
+                "label": "🏠 Model picks home team",
+                "desc": "Model's pick is the home side",
+            },
+            {
+                "key": "away_pick",
+                "label": "✈️ Model picks away team",
+                "desc": "Model's pick is the away side",
+            },
+            {
+                "key": "ppg_advantage",
+                "label": "📈 Higher season PPG & GPG",
+                "desc": "Pick's season PPG > opponent's AND pick's GPG > opponent's",
+            },
+            {
+                "key": "better_form",
+                "label": "🔥 Better recent form",
+                "desc": "Pick's last-5 PPG > opponent's last-5 PPG",
+            },
+            {
+                "key": "venue_strength",
+                "label": "🏟️ Strong at relevant venue",
+                "desc": "Pick gets ≥ 1.5 PPG at the venue they're playing (home or away)",
+            },
+            {
+                "key": "win_lose_split",
+                "label": "🎯 Win%/Lose% gap",
+                "desc": "Pick wins ≥ 50% of season AND opponent loses ≥ 40% of season",
+            },
+        ]
+
+        # Render each condition with a 3-state radio (Off / Required / Bonus)
+        checklist_state = {}
+        # 2 conditions per row to keep the expander compact
+        for row_start in range(0, len(CHECKLIST_CONDITIONS), 2):
+            cols = st.columns(2)
+            for col, cond in zip(cols, CHECKLIST_CONDITIONS[row_start:row_start + 2]):
+                with col:
+                    state = st.radio(
+                        cond["label"],
+                        options=["Off", "Required", "Bonus"],
+                        index=0,
+                        key=f"chk_{cond['key']}_state",
+                        help=cond["desc"],
+                        horizontal=True,
+                    )
+                    checklist_state[cond["key"]] = state
+
+        # Minimum bonus count — only meaningful when at least one Bonus is set
+        bonus_count = sum(1 for s in checklist_state.values() if s == "Bonus")
+        if bonus_count > 0:
+            min_bonus = st.slider(
+                f"Minimum bonus checks to pass (out of {bonus_count} bonus)",
+                min_value=0, max_value=bonus_count,
+                value=min(bonus_count, max(1, bonus_count - 1)),
+            )
+        else:
+            min_bonus = 0
+
+        any_active = any(s != "Off" for s in checklist_state.values())
+        use_checklist = st.checkbox("Apply custom checklist", value=False,
+                                     disabled=not any_active)
+
     # Placeholder for the metrics dashboard.
     # Filled below, after the filter logic computes filtered_df.
     metrics_placeholder = st.empty()
@@ -963,6 +1042,68 @@ if use_custom:
         (filtered_df['_fav_season_win'].fillna(0)   >= custom_fav_win) &
         (filtered_df['_dog_season_lose'].fillna(0)  >= custom_dog_lose)
     )
+
+# Custom checklist evaluation. Each condition produces a boolean Series.
+# Required conditions become AND-mask additions. Bonus conditions are summed
+# per row; the row passes if its bonus count >= min_bonus.
+if use_checklist and any_active:
+    smart_filter_active = True
+
+    pick = filtered_df['Model Prediction'].astype(str).str.strip()
+    home_t = filtered_df['Home Team'].astype(str).str.strip()
+    away_t = filtered_df['Away Team'].astype(str).str.strip()
+    pick_is_home = pick == home_t
+    pick_is_away = pick == away_t
+    # Auto-hide Draw picks since the checklist tests favourite-side stats
+    not_a_draw = pick != "Draw"
+
+    def _pick_side(home_col, away_col):
+        return np.where(pick_is_home, filtered_df[home_col],
+                np.where(pick_is_away, filtered_df[away_col], np.nan))
+
+    pick_PPG     = _pick_side("Home PPG (Season)", "Away PPG (Season)")
+    opp_PPG      = _pick_side("Away PPG (Season)", "Home PPG (Season)")
+    pick_GPG     = _pick_side("Home Team GPG", "Away Team GPG")
+    opp_GPG      = _pick_side("Away Team GPG", "Home Team GPG")
+    pick_Form    = _pick_side("Home PPG (Last 5)", "Away PPG (Last 5)")
+    opp_Form     = _pick_side("Away PPG (Last 5)", "Home PPG (Last 5)")
+    pick_Venue   = _pick_side("Home PPG (At Home)", "Away PPG (Away)")
+    pick_WinPct  = _pick_side("Home Win % (Season)", "Away Win % (Season)")
+    opp_LosePct  = _pick_side("Away Lose % (Season)", "Home Lose % (Season)")
+
+    # Compute each condition's pass/fail per row
+    conditions = {
+        "home_pick":        pick_is_home,
+        "away_pick":        pick_is_away,
+        "ppg_advantage":    (pd.Series(pick_PPG, index=filtered_df.index) > pd.Series(opp_PPG, index=filtered_df.index)) &
+                            (pd.Series(pick_GPG, index=filtered_df.index) > pd.Series(opp_GPG, index=filtered_df.index)),
+        "better_form":      pd.Series(pick_Form, index=filtered_df.index) > pd.Series(opp_Form, index=filtered_df.index),
+        "venue_strength":   pd.Series(pick_Venue, index=filtered_df.index) >= 1.5,
+        "win_lose_split":   (pd.Series(pick_WinPct, index=filtered_df.index) >= 50) &
+                            (pd.Series(opp_LosePct, index=filtered_df.index) >= 40),
+    }
+
+    required_mask = pd.Series(True, index=filtered_df.index)
+    bonus_score = pd.Series(0, index=filtered_df.index)
+    required_descs = []
+    bonus_descs = []
+    for key, state in checklist_state.items():
+        if state == "Required":
+            required_mask &= conditions[key].fillna(False)
+            required_descs.append(key)
+        elif state == "Bonus":
+            bonus_score += conditions[key].fillna(False).astype(int)
+            bonus_descs.append(key)
+
+    bonus_pass = bonus_score >= min_bonus if bonus_descs else pd.Series(True, index=filtered_df.index)
+    combined_mask &= not_a_draw & required_mask & bonus_pass
+
+    summary_parts = []
+    if required_descs:
+        summary_parts.append(f"Required: {', '.join(required_descs)}")
+    if bonus_descs:
+        summary_parts.append(f"Bonus ≥ {min_bonus}/{len(bonus_descs)}: {', '.join(bonus_descs)}")
+    active_descs.append("Checklist · " + " · ".join(summary_parts))
 
 if smart_filter_active:
     filtered_df = filtered_df[combined_mask]
