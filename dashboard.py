@@ -915,54 +915,35 @@ FILTER_DEFS = [
     },
 ]
 
-# Render the checkbox grid + custom-thresholds expander inside the left column
+
+
+
+# Render the checkbox grid + checklist + custom thresholds inside the left column
 with left_col:
-    # Visual structure: 4 pick filters on top row, 3 market/quality on bottom.
-    # The first 4 entries in FILTER_DEFS are pick filters; the rest are
-    # markets + the hide-draws quality filter.
-    active_filters = []
-
-    # Row 1 — pick conviction filters
-    pick_row = FILTER_DEFS[:4]
-    cols = st.columns(4)
-    for col, f in zip(cols, pick_row):
-        with col:
-            if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
-                active_filters.append(f)
-
-    # Row 2 — markets + quality (3 filters, give them a bit more breathing room)
-    market_row = FILTER_DEFS[4:]
-    cols = st.columns(4)  # 4 columns; leave the last empty for spacing
-    for col, f in zip(cols, market_row):
-        with col:
-            if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
-                active_filters.append(f)
-
-
-    # Custom thresholds tucked into an expander
-    with st.expander("⚙️ Custom thresholds (advanced)", expanded=False):
-        cc1, cc2, cc3, cc4 = st.columns(4)
-        with cc1:
-            custom_win_pct = st.slider("Min win probability (%)", 0, 100, 50, 5)
-            custom_fav_win = st.slider("Min favourite season Win%", 0, 100, 0, 5)
-        with cc2:
-            custom_draw_pct = st.slider("Max draw probability (%)", 0, 50, 30, 1)
-            custom_dog_lose = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
-        with cc3:
-            custom_margin   = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
-            custom_xg_gap   = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
-        with cc4:
-            custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
-            use_custom      = st.checkbox("Apply custom thresholds", value=False)
-
-    # Custom Checklist — manual pick verification with mix-and-match conditions.
-    # Each condition can be Off / Required / Bonus. Bonus checks contribute
-    # toward a minimum-bonus-count threshold but aren't individually mandatory.
-    # Rendered inline (not behind an expander) so it's always visible.
-    # The compact-checklist CSS shrinks the radio buttons so all 6 conditions
-    # fit in ~half the vertical space Streamlit's defaults would use.
+    # Compact-row CSS scopes to this filter section. Shrinks Streamlit's
+    # default checkbox + radio padding so the filters fit in less vertical space.
     st.markdown("""
     <style>
+    /* Section heading bar */
+    .filter-section-heading {
+        font-size: 0.7rem;
+        color: #888;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin: 4px 0 4px 0;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #2a2d36;
+        font-weight: 600;
+    }
+    /* Tighter checkbox rows */
+    .filter-strip [data-testid="stCheckbox"] {
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    .filter-strip [data-testid="stCheckbox"] label p {
+        font-size: 0.85rem !important;
+    }
+    /* Compact radio buttons inside the checklist section */
     .checklist-section [data-testid="stRadio"] > label {
         font-size: 0.78rem !important;
         padding-bottom: 1px !important;
@@ -983,32 +964,82 @@ with left_col:
     .checklist-section [data-testid="stSlider"] label {
         font-size: 0.78rem !important;
     }
+    .checklist-section [data-testid="stSlider"] {
+        padding-top: 2px !important;
+    }
     </style>
-    <div class="checklist-section">
     """, unsafe_allow_html=True)
 
-    # Title + picked-side toggle on the same row to save vertical space
-    title_col, side_col = st.columns([2, 1])
-    with title_col:
-        st.markdown(
-            '<div style="margin: 8px 0 4px 0; font-size: 0.85rem; color: #aaa; line-height: 1.4;">'
-            '<strong style="color: #ddd;">📋 Custom Checklist</strong> · '
-            '<span style="color:#f87171;">Required</span> = must pass · '
-            '<span style="color:#fbbf24;">Bonus</span> = counts toward threshold · '
-            'auto-hides Draw picks'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+    # ── SECTION 1 — Smart Filters ─────────────────────────────────────────
+    st.markdown(
+        '<div class="filter-section-heading">⚡ Smart Filters · '
+        '<span style="text-transform:none;font-weight:400;color:#666;letter-spacing:0;">'
+        'stack with AND logic</span></div>',
+        unsafe_allow_html=True,
+    )
+    active_filters = []
+    # Row 1 — pick conviction filters
+    cols = st.columns(4)
+    for col, f in zip(cols, FILTER_DEFS[:4]):
+        with col:
+            if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
+                active_filters.append(f)
+    # Row 2 — markets + quality
+    cols = st.columns(4)
+    for col, f in zip(cols, FILTER_DEFS[4:]):
+        with col:
+            if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
+                active_filters.append(f)
+
+    # ── SECTION 2 — Custom Checklist ──────────────────────────────────────
+    st.markdown(
+        '<div class="filter-section-heading" style="margin-top: 14px;">'
+        '📋 Custom Checklist · '
+        '<span style="text-transform:none;font-weight:400;color:#666;letter-spacing:0;">'
+        '<span style="color:#f87171;">Required</span> = must pass · '
+        '<span style="color:#fbbf24;">Bonus</span> = counts toward threshold · '
+        'auto-hides draws</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="checklist-section">', unsafe_allow_html=True)
+
+    # Control row above conditions: side toggle, min-bonus slider, apply checkbox.
+    # The slider needs to know how many Bonus conditions exist, but those haven't
+    # been rendered yet on this frame. Read from session_state — first run is 0.
+    _BONUS_KEYS = ["ppg_higher", "gpg_higher", "gcpg_lower",
+                   "better_form", "venue_stronger", "win_lose_gap"]
+    prior_bonus_count = sum(
+        1 for k in _BONUS_KEYS
+        if st.session_state.get(f"chk_{k}_state") == "Bonus"
+    )
+    side_col, slider_col, apply_col = st.columns([1.5, 2.0, 1.0])
     with side_col:
         picked_side = st.radio(
             "Picked side",
             options=["Home only", "Both", "Away only"],
             index=1,
             horizontal=True,
-            label_visibility="collapsed",
-            help="Which side(s) to consider — left/middle/right = Home/Both/Away",
+            help="Home / Both / Away",
         )
+    with slider_col:
+        if prior_bonus_count > 0:
+            min_bonus = st.slider(
+                f"Min bonus (of {prior_bonus_count})",
+                min_value=0, max_value=prior_bonus_count,
+                value=min(prior_bonus_count, max(1, prior_bonus_count - 1)),
+            )
+        else:
+            min_bonus = 0
+            st.markdown(
+                '<div style="font-size:0.72rem;color:#666;padding-top:24px;">'
+                'Set a condition to Bonus to enable the threshold.</div>',
+                unsafe_allow_html=True,
+            )
+    with apply_col:
+        st.markdown('<div style="height: 24px;"></div>', unsafe_allow_html=True)
+        use_checklist = st.checkbox("Apply checklist", value=False)
 
+    # Six conditions in 3 columns × 2 rows
     CHECKLIST_CONDITIONS = [
         {"key": "ppg_higher",     "label": "📈 Higher PPG"},
         {"key": "gpg_higher",     "label": "⚽ Higher GPG"},
@@ -1017,8 +1048,6 @@ with left_col:
         {"key": "venue_stronger", "label": "🏟️ Better venue"},
         {"key": "win_lose_gap",   "label": "🎯 Wins more, loses less"},
     ]
-
-    # 3 columns × 2 rows of conditions
     checklist_state = {}
     for row_start in range(0, len(CHECKLIST_CONDITIONS), 3):
         cols = st.columns(3)
@@ -1033,28 +1062,30 @@ with left_col:
                 )
                 checklist_state[cond["key"]] = state
 
-    # Bottom row — slider + apply button
+    st.markdown('</div>', unsafe_allow_html=True)  # close checklist-section
+
+    # Recompute the live bonus count and any_active based on this frame's state
     bonus_count = sum(1 for s in checklist_state.values() if s == "Bonus")
     any_active = (
         any(s != "Off" for s in checklist_state.values())
         or picked_side != "Both"
     )
-    slider_col, apply_col = st.columns([3, 1])
-    with slider_col:
-        if bonus_count > 0:
-            min_bonus = st.slider(
-                f"Minimum bonus checks (of {bonus_count})",
-                min_value=0, max_value=bonus_count,
-                value=min(bonus_count, max(1, bonus_count - 1)),
-            )
-        else:
-            min_bonus = 0
-    with apply_col:
-        st.markdown('<div style="height: 22px;"></div>', unsafe_allow_html=True)
-        use_checklist = st.checkbox("Apply checklist", value=False,
-                                     disabled=not any_active)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ── SECTION 3 — Custom thresholds (advanced, behind expander) ─────────
+    with st.expander("⚙️ Custom thresholds (advanced)", expanded=False):
+        cc1, cc2, cc3, cc4 = st.columns(4)
+        with cc1:
+            custom_win_pct = st.slider("Min win probability (%)", 0, 100, 50, 5)
+            custom_fav_win = st.slider("Min favourite season Win%", 0, 100, 0, 5)
+        with cc2:
+            custom_draw_pct = st.slider("Max draw probability (%)", 0, 50, 30, 1)
+            custom_dog_lose = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
+        with cc3:
+            custom_margin   = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
+            custom_xg_gap   = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
+        with cc4:
+            custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
+            use_custom      = st.checkbox("Apply custom thresholds", value=False)
 
     # Placeholder for the metrics dashboard.
     # Filled below, after the filter logic computes filtered_df.
@@ -1214,20 +1245,20 @@ if smart_filter_active:
 def _metric_html(label: str, value_html: str) -> str:
     return (
         '<div style="background:#1a1c22;border:1px solid #333;border-radius:6px;'
-        'padding:10px 14px;text-align:left;">'
-        f'<div style="color:#888;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.5px;">{label}</div>'
-        f'<div style="font-size:1.4rem;font-weight:600;color:#fff;margin-top:2px;">{value_html}</div>'
+        'padding:6px 12px;text-align:left;">'
+        f'<div style="color:#888;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.5px;">{label}</div>'
+        f'<div style="font-size:1.15rem;font-weight:600;color:#fff;margin-top:1px;">{value_html}</div>'
         '</div>'
     )
 
 metrics_html = (
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;">'
-    + _metric_html("Fixtures shown", f"{n_total}{delta_text}")
-    + _metric_html("Strong picks",   _fmt(n_strong, n_total))
-    + _metric_html("Draws picked",   _fmt(n_draws, n_total))
-    + _metric_html("Confident BTTS", _fmt(n_conf_btts, n_total))
+    '<div style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:10px;">'
+    + _metric_html("Fixtures",       f"{n_total}{delta_text}")
+    + _metric_html("Strong",         _fmt(n_strong, n_total))
+    + _metric_html("Draws",          _fmt(n_draws, n_total))
+    + _metric_html("Conf BTTS",      _fmt(n_conf_btts, n_total))
     + _metric_html("Acca Quality",   _fmt(n_acca_quality, n_total))
-    + _metric_html("Confident O2.5", _fmt(n_conf_o25, n_total))
+    + _metric_html("Conf O2.5",      _fmt(n_conf_o25, n_total))
     + _metric_html("Avg H%",         f"{avg_h:.1f}%")
     + _metric_html("Avg A%",         f"{avg_a:.1f}%")
     + '</div>'
