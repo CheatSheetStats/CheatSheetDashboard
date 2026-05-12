@@ -735,6 +735,29 @@ if {'Home xG', 'Away xG'}.issubset(df.columns):
 else:
     df['_fav_match_xg_adv'] = np.nan
 
+# BTTS+ filter inputs.
+#   _btts_min_sum   = min(home GPG, away GPG) + min(home GCPG, away GCPG)
+#                     The "bottleneck score" — both teams must attack AND both
+#                     defences must concede for BTTS to hit. Validated 70% on 20
+#                     fixtures (weekend sample) at threshold ≥ 2.80.
+#   _btts_max_winpct = max(home win%, away win%) — favourite's win probability.
+#                      Stacked with the above: only take BTTS picks when neither
+#                      team is too dominant (high favourite = low chance of upset
+#                      goal = underdog often fails to score).
+if {'Home Team GPG', 'Away Team GPG', 'Home Team GCPG', 'Away Team GCPG'}.issubset(df.columns):
+    df['_btts_min_sum'] = (
+        np.minimum(df['Home Team GPG'],  df['Away Team GPG'])
+      + np.minimum(df['Home Team GCPG'], df['Away Team GCPG'])
+    )
+else:
+    df['_btts_min_sum'] = np.nan
+
+if {'Home Win %', 'Away Win %'}.issubset(df.columns):
+    df['_btts_max_winpct'] = np.maximum(df['Home Win %'], df['Away Win %'])
+else:
+    df['_btts_max_winpct'] = np.nan
+
+
 
 # Per-fixture Custom Checklist condition flags. Computed for every fixture
 # so the table can always display a Score column, regardless of whether the
@@ -903,11 +926,16 @@ FILTER_DEFS = [
 
     # ── Market filters (independent of pick conviction) ──
     {
-        "key":   "confident_btts",
-        "label": "🥅 Confident BTTS Y",
-        "desc":  "BTTS% ≥ 60% (absolute, league-independent). "
-                 "Validated at 61% precision across 38 picks vs 54% base rate.",
-        "numeric": [("BTTS %", ">=", 60)],
+        "key":   "btts_plus",
+        "label": "🥅 BTTS+",
+        "desc":  "Both Teams to Score filter combining two validated signals: "
+                 "(a) min(home GPG, away GPG) + min(home GCPG, away GCPG) ≥ 2.80 — "
+                 "the 'bottleneck score' showing both teams attack AND both "
+                 "defences concede; AND (b) favourite win% ≤ 55% — avoids matches "
+                 "where one team is too dominant for the underdog to score. "
+                 "Validated at 70% precision across 20 picks (weekend sample).",
+        "numeric": [("_btts_min_sum",    ">=", 2.80),
+                    ("_btts_max_winpct", "<=", 55)],
         "strong":  False,
     },
     {
