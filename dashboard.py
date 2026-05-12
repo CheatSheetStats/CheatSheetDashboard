@@ -796,56 +796,71 @@ leagues = sorted(df['Excel Document'].dropna().unique().tolist())
 if "leagues_selected" not in st.session_state:
     st.session_state.leagues_selected = leagues
 
-# Two-column layout: filters on the left, leagues+dates compact on the right.
-left_col, right_col = st.columns([3, 1], gap="medium")
+# Compact top-row: leagues popover + dates side-by-side, full-width above filters.
+# This reclaims the ~300px right column previously eaten by chips.
+n_selected = len(st.session_state.leagues_selected)
+n_total = len(leagues)
+all_selected = n_selected == n_total
 
-# ── RIGHT: leagues + date pickers (compact panel) ──
-with right_col:
-    # League quick-select buttons — small and inline
-    bcol1, bcol2 = st.columns(2)
-    with bcol1:
-        if st.button("All leagues", use_container_width=True, help="Select all leagues"):
-            st.session_state.leagues_selected = leagues
-            st.rerun()
-    with bcol2:
-        if st.button("Clear", use_container_width=True, help="Clear all leagues"):
-            st.session_state.leagues_selected = []
-            st.rerun()
+if df['Match Date'].notna().any():
+    min_date = df['Match Date'].min().date()
+    max_date = df['Match Date'].max().date()
+else:
+    min_date = max_date = None
 
-    selected_leagues = st.multiselect(
-        f"Leagues ({len(st.session_state.leagues_selected)}/{len(leagues)})",
-        leagues,
-        default=st.session_state.leagues_selected,
-        key="leagues_widget",
-        label_visibility="visible",
-    )
-    st.session_state.leagues_selected = selected_leagues
+top_lg_col, top_date_col, _spacer = st.columns([1.4, 2.2, 4.4])
 
-    # Date pickers under the league box
-    if df['Match Date'].notna().any():
-        min_date = df['Match Date'].min().date()
-        max_date = df['Match Date'].max().date()
+with top_lg_col:
+    # Streamlit's popover puts the contents in a panel that opens beneath the
+    # button. Label shows current selection state at a glance.
+    lg_label = f"🌐 Leagues ({n_selected}/{n_total})"
+    with st.popover(lg_label, use_container_width=True):
+        bcol1, bcol2 = st.columns(2)
+        with bcol1:
+            if st.button("All leagues", use_container_width=True, key="lg_all"):
+                st.session_state.leagues_selected = leagues
+                st.rerun()
+        with bcol2:
+            if st.button("Clear", use_container_width=True, key="lg_clear"):
+                st.session_state.leagues_selected = []
+                st.rerun()
+        selected_leagues = st.multiselect(
+            "Leagues",
+            leagues,
+            default=st.session_state.leagues_selected,
+            key="leagues_widget",
+            label_visibility="collapsed",
+        )
+        st.session_state.leagues_selected = selected_leagues
+
+# Use whatever's in session for the actual filter pass (popover may not have
+# updated this frame if user only clicked a button — that triggers a rerun
+# above and we never reach here in the same frame).
+selected_leagues = st.session_state.leagues_selected
+
+with top_date_col:
+    if min_date is not None:
         dcol1, dcol2 = st.columns(2)
         with dcol1:
-            start_date = st.date_input("From", min_date, min_value=min_date, max_value=max_date)
+            start_date = st.date_input(
+                "From", min_date,
+                min_value=min_date, max_value=max_date,
+                label_visibility="collapsed",
+            )
         with dcol2:
-            end_date = st.date_input("To", max_date, min_value=min_date, max_value=max_date)
+            end_date = st.date_input(
+                "To", max_date,
+                min_value=min_date, max_value=max_date,
+                label_visibility="collapsed",
+            )
     else:
         start_date = end_date = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Smart filters — REBUILT for v5 signals
+# Smart filters + Custom Checklist — side-by-side, both always visible
 # ──────────────────────────────────────────────────────────────────────────────
-# ── LEFT: smart filter checkboxes ──
-with left_col:
-    st.markdown(
-        '<div style="margin: 0 0 6px 0; font-size: 0.85rem; color: #aaa;">'
-        '<strong style="color: #ddd;">🎯 Smart Filters</strong> · '
-        'tick one or more — they stack with AND logic'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+left_col, right_col = st.columns([1, 1], gap="medium")
 
 FILTER_DEFS = [
     # ── Pick conviction filters (mutually compatible — stack with AND) ──
@@ -918,59 +933,64 @@ FILTER_DEFS = [
 
 
 
-# Render the checkbox grid + checklist + custom thresholds inside the left column
-with left_col:
-    # Compact-row CSS scopes to this filter section. Shrinks Streamlit's
-    # default checkbox + radio padding so the filters fit in less vertical space.
-    st.markdown("""
-    <style>
-    /* Section heading bar */
-    .filter-section-heading {
-        font-size: 0.7rem;
-        color: #888;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        margin: 4px 0 4px 0;
-        padding-bottom: 4px;
-        border-bottom: 1px solid #2a2d36;
-        font-weight: 600;
-    }
-    /* Tighter checkbox rows */
-    .filter-strip [data-testid="stCheckbox"] {
-        padding-top: 0 !important;
-        padding-bottom: 0 !important;
-    }
-    .filter-strip [data-testid="stCheckbox"] label p {
-        font-size: 0.85rem !important;
-    }
-    /* Compact radio buttons inside the checklist section */
-    .checklist-section [data-testid="stRadio"] > label {
-        font-size: 0.78rem !important;
-        padding-bottom: 1px !important;
-        margin-bottom: 1px !important;
-    }
-    .checklist-section [data-testid="stRadio"] [role="radiogroup"] {
-        gap: 4px !important;
-    }
-    .checklist-section [data-testid="stRadio"] [role="radiogroup"] label {
-        padding: 1px 4px !important;
-        margin-right: 0 !important;
-        font-size: 0.75rem !important;
-    }
-    .checklist-section [data-testid="stRadio"] [role="radiogroup"] label > div:first-child {
-        transform: scale(0.85);
-    }
-    .checklist-section [data-testid="stTooltipIcon"] { display: none !important; }
-    .checklist-section [data-testid="stSlider"] label {
-        font-size: 0.78rem !important;
-    }
-    .checklist-section [data-testid="stSlider"] {
-        padding-top: 2px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# Inject filter-section CSS once (applies to both columns below)
+st.markdown("""
+<style>
+/* Section heading bar */
+.filter-section-heading {
+    font-size: 0.7rem;
+    color: #888;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 4px 0 6px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #2a2d36;
+    font-weight: 600;
+}
+/* Compact checkbox rows */
+.filter-strip [data-testid="stCheckbox"] {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+.filter-strip [data-testid="stCheckbox"] label p {
+    font-size: 0.85rem !important;
+}
+/* Compact radios inside the checklist section */
+.checklist-section [data-testid="stRadio"] > label {
+    font-size: 0.72rem !important;
+    padding-bottom: 1px !important;
+    margin-bottom: 1px !important;
+    text-align: center !important;
+    display: block !important;
+    color: #ccc !important;
+    line-height: 1.2 !important;
+}
+.checklist-section [data-testid="stRadio"] [role="radiogroup"] {
+    gap: 0 !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+}
+.checklist-section [data-testid="stRadio"] [role="radiogroup"] label {
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 0.68rem !important;
+}
+.checklist-section [data-testid="stRadio"] [role="radiogroup"] label > div:first-child {
+    transform: scale(0.7);
+    margin-right: 2px !important;
+}
+.checklist-section [data-testid="stTooltipIcon"] { display: none !important; }
+.checklist-section [data-testid="stSlider"] label {
+    font-size: 0.72rem !important;
+}
+.checklist-section [data-testid="stSlider"] {
+    padding-top: 0 !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
-    # ── SECTION 1 — Smart Filters ─────────────────────────────────────────
+# ── LEFT COLUMN: Smart Filters ─────────────────────────────────────────────
+with left_col:
     st.markdown(
         '<div class="filter-section-heading">⚡ Smart Filters · '
         '<span style="text-transform:none;font-weight:400;color:#666;letter-spacing:0;">'
@@ -991,35 +1011,33 @@ with left_col:
             if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
                 active_filters.append(f)
 
-    # ── SECTION 2 — Custom Checklist ──────────────────────────────────────
+# ── RIGHT COLUMN: Custom Checklist ─────────────────────────────────────────
+with right_col:
     st.markdown(
-        '<div class="filter-section-heading" style="margin-top: 14px;">'
+        '<div class="filter-section-heading">'
         '📋 Custom Checklist · '
         '<span style="text-transform:none;font-weight:400;color:#666;letter-spacing:0;">'
-        '<span style="color:#f87171;">Required</span> = must pass · '
-        '<span style="color:#fbbf24;">Bonus</span> = counts toward threshold · '
-        'auto-hides draws</span></div>',
+        '<span style="color:#f87171;">Req</span> must pass · '
+        '<span style="color:#fbbf24;">Bonus</span> = threshold · auto-hides draws</span></div>',
         unsafe_allow_html=True,
     )
     st.markdown('<div class="checklist-section">', unsafe_allow_html=True)
 
-    # Control row above conditions: side toggle, min-bonus slider, apply checkbox.
-    # The slider needs to know how many Bonus conditions exist, but those haven't
-    # been rendered yet on this frame. Read from session_state — first run is 0.
+    # Control row: picked side · min bonus slider · apply checkbox
     _BONUS_KEYS = ["ppg_higher", "gpg_higher", "gcpg_lower",
                    "better_form", "venue_stronger", "win_lose_gap"]
     prior_bonus_count = sum(
         1 for k in _BONUS_KEYS
         if st.session_state.get(f"chk_{k}_state") == "Bonus"
     )
-    side_col, slider_col, apply_col = st.columns([1.5, 2.0, 1.0])
+    side_col, slider_col, apply_col = st.columns([1.5, 1.8, 1.0])
     with side_col:
         picked_side = st.radio(
             "Picked side",
-            options=["Home only", "Both", "Away only"],
+            options=["Home", "Both", "Away"],
             index=1,
             horizontal=True,
-            help="Home / Both / Away",
+            help="Restrict to Home picks, Away picks, or Both",
         )
     with slider_col:
         if prior_bonus_count > 0:
@@ -1031,65 +1049,68 @@ with left_col:
         else:
             min_bonus = 0
             st.markdown(
-                '<div style="font-size:0.72rem;color:#666;padding-top:24px;">'
-                'Set a condition to Bonus to enable the threshold.</div>',
+                '<div style="font-size:0.7rem;color:#666;padding-top:20px;">'
+                '— set a Bonus to enable</div>',
                 unsafe_allow_html=True,
             )
     with apply_col:
-        st.markdown('<div style="height: 24px;"></div>', unsafe_allow_html=True)
-        use_checklist = st.checkbox("Apply checklist", value=False)
+        st.markdown('<div style="height: 22px;"></div>', unsafe_allow_html=True)
+        use_checklist = st.checkbox("Apply", value=False)
 
-    # Six conditions in 3 columns × 2 rows
+    # Table-style conditions row: 6 narrow columns, each with the condition
+    # label on top and a stacked Off/Required/Bonus radio below. This gives the
+    # "spreadsheet" feel — every condition is one cell, easy to scan.
     CHECKLIST_CONDITIONS = [
-        {"key": "ppg_higher",     "label": "📈 Higher PPG"},
-        {"key": "gpg_higher",     "label": "⚽ Higher GPG"},
-        {"key": "gcpg_lower",     "label": "🛡️ Lower GCPG"},
-        {"key": "better_form",    "label": "🔥 Better form"},
-        {"key": "venue_stronger", "label": "🏟️ Better venue"},
-        {"key": "win_lose_gap",   "label": "🎯 Wins more, loses less"},
+        {"key": "ppg_higher",     "short": "PPG"},
+        {"key": "gpg_higher",     "short": "GPG"},
+        {"key": "gcpg_lower",     "short": "GCPG"},
+        {"key": "better_form",    "short": "Form"},
+        {"key": "venue_stronger", "short": "Venue"},
+        {"key": "win_lose_gap",   "short": "W/L"},
     ]
     checklist_state = {}
-    for row_start in range(0, len(CHECKLIST_CONDITIONS), 3):
-        cols = st.columns(3)
-        for col, cond in zip(cols, CHECKLIST_CONDITIONS[row_start:row_start + 3]):
-            with col:
-                state = st.radio(
-                    cond["label"],
-                    options=["Off", "Required", "Bonus"],
-                    index=0,
-                    key=f"chk_{cond['key']}_state",
-                    horizontal=True,
-                )
-                checklist_state[cond["key"]] = state
+    cols = st.columns(6)
+    for col, cond in zip(cols, CHECKLIST_CONDITIONS):
+        with col:
+            state = st.radio(
+                cond["short"],
+                options=["Off", "Required", "Bonus"],
+                index=0,
+                key=f"chk_{cond['key']}_state",
+            )
+            checklist_state[cond["key"]] = state
 
     st.markdown('</div>', unsafe_allow_html=True)  # close checklist-section
 
-    # Recompute the live bonus count and any_active based on this frame's state
+    # Recompute live state for the filter pass below
     bonus_count = sum(1 for s in checklist_state.values() if s == "Bonus")
     any_active = (
         any(s != "Off" for s in checklist_state.values())
         or picked_side != "Both"
     )
 
-    # ── SECTION 3 — Custom thresholds (advanced, behind expander) ─────────
-    with st.expander("⚙️ Custom thresholds (advanced)", expanded=False):
-        cc1, cc2, cc3, cc4 = st.columns(4)
-        with cc1:
-            custom_win_pct = st.slider("Min win probability (%)", 0, 100, 50, 5)
-            custom_fav_win = st.slider("Min favourite season Win%", 0, 100, 0, 5)
-        with cc2:
-            custom_draw_pct = st.slider("Max draw probability (%)", 0, 50, 30, 1)
-            custom_dog_lose = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
-        with cc3:
-            custom_margin   = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
-            custom_xg_gap   = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
-        with cc4:
-            custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
-            use_custom      = st.checkbox("Apply custom thresholds", value=False)
+# Map the short toggle values back to the original strings the filter uses
+_SIDE_MAP = {"Home": "Home only", "Both": "Both", "Away": "Away only"}
+picked_side = _SIDE_MAP[picked_side]
 
-    # Placeholder for the metrics dashboard.
-    # Filled below, after the filter logic computes filtered_df.
-    metrics_placeholder = st.empty()
+# ── FULL-WIDTH: Custom thresholds (advanced) below both columns ───────────
+with st.expander("⚙️ Custom thresholds (advanced)", expanded=False):
+    cc1, cc2, cc3, cc4 = st.columns(4)
+    with cc1:
+        custom_win_pct = st.slider("Min win probability (%)", 0, 100, 50, 5)
+        custom_fav_win = st.slider("Min favourite season Win%", 0, 100, 0, 5)
+    with cc2:
+        custom_draw_pct = st.slider("Max draw probability (%)", 0, 50, 30, 1)
+        custom_dog_lose = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
+    with cc3:
+        custom_margin   = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
+        custom_xg_gap   = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
+    with cc4:
+        custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
+        use_custom      = st.checkbox("Apply custom thresholds", value=False)
+
+# Metrics dashboard placeholder — populated after filter logic computes filtered_df
+metrics_placeholder = st.empty()
 
 st.markdown('</div>', unsafe_allow_html=True)
 
