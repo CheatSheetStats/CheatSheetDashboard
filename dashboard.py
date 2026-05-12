@@ -657,7 +657,7 @@ st.markdown("---")
 # Load + prep data
 # ──────────────────────────────────────────────────────────────────────────────
 df = pd.read_csv(io.BytesIO(response))
-df['Match Date'] = pd.to_datetime(df['Match Date'], errors='coerce')
+df['Match Date'] = pd.to_datetime(df['Match Date'], errors='coerce', format='ISO8601')
 
 # Detect schema (v4 vs v5) so dashboard works with either upload
 HAS_V5_COLS = 'Confidence Score' in df.columns and 'Home xG Diff PM' in df.columns
