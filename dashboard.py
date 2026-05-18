@@ -158,18 +158,22 @@ st.markdown("""
 */
 .bordered-table th:nth-child(4),    /* end of section 1 (Away)        */
 .bordered-table td:nth-child(4),
-.bordered-table th:nth-child(12),   /* end of section 2 (Score)       */
-.bordered-table td:nth-child(12),
-.bordered-table th:nth-child(14),   /* end of section 3 (A Rank)      */
+.bordered-table th:nth-child(6),    /* end of section 2 (A Rank)      */
+.bordered-table td:nth-child(6),
+.bordered-table th:nth-child(9),    /* end of section 3 (A%)          */
+.bordered-table td:nth-child(9),
+.bordered-table th:nth-child(14),   /* end of section 4 (Min Odds)    */
 .bordered-table td:nth-child(14),
-.bordered-table th:nth-child(20),   /* end of section 4 (A GCPG)      */
+.bordered-table th:nth-child(20),   /* end of section 5 (A GCPG)      */
 .bordered-table td:nth-child(20),
-.bordered-table th:nth-child(24),   /* end of section 5 (A Δ)         */
+.bordered-table th:nth-child(24),   /* end of section 6 (A Δ)         */
 .bordered-table td:nth-child(24),
-.bordered-table th:nth-child(26),   /* end of section 6 (A @Away)     */
-.bordered-table td:nth-child(26),
-.bordered-table th:nth-child(30),   /* end of section 7 (A Lose%)     */
-.bordered-table td:nth-child(30) {
+.bordered-table th:nth-child(28),   /* end of section 7 (A @A Δ)      */
+.bordered-table td:nth-child(28),
+.bordered-table th:nth-child(30),   /* end of section 8 (A Lose%)     */
+.bordered-table td:nth-child(30),
+.bordered-table th:nth-child(32),   /* end of section 9 (A Win%)      */
+.bordered-table td:nth-child(32) {
     border-right: 3px solid #6c7280 !important;
 }
 </style>
@@ -758,6 +762,55 @@ else:
     df['_btts_max_winpct'] = np.nan
 
 
+# Fair-value odds. For any probability p (in 0-100%), the break-even decimal
+# odds you'd need to take a bet are 100/p. Bet below these odds = negative EV,
+# bet above = positive EV (assuming the model is correctly calibrated; in
+# practice it's slightly overconfident on its top picks, so treat these as a
+# *floor* for the price you'd accept).
+#
+# Three columns:
+#   _odds_pick    — fair odds for the model's chosen outcome (Home/Draw/Away)
+#   _odds_btts_y  — fair odds for Both Teams to Score
+#   _odds_o25_y   — fair odds for Over 2.5 goals
+#
+# All are NaN when the underlying probability is missing or too low to be a
+# realistic bet (model probability < 30% → fair odds > 3.33, by which point
+# we're not really value-shopping; we're punting).
+def _fair_odds(probability_pct, min_pct=30.0):
+    """Return decimal break-even odds, or NaN if probability too low/missing."""
+    p = pd.to_numeric(probability_pct, errors='coerce')
+    fair = 100.0 / p
+    fair = fair.where(p >= min_pct, np.nan)
+    return fair.round(2)
+
+# Pick the probability matching the model's prediction
+def _pick_probability(row):
+    pick = row.get('Model Prediction')
+    if pick == row.get('Home Team'):
+        return row.get('Home Win %')
+    if pick == row.get('Away Team'):
+        return row.get('Away Win %')
+    if pick == 'Draw':
+        return row.get('Draw %')
+    return np.nan
+
+if {'Model Prediction', 'Home Win %', 'Away Win %', 'Draw %'}.issubset(df.columns):
+    df['_pick_prob'] = df.apply(_pick_probability, axis=1)
+    df['_odds_pick'] = _fair_odds(df['_pick_prob'])
+else:
+    df['_odds_pick'] = np.nan
+
+if 'BTTS %' in df.columns:
+    df['_odds_btts_y'] = _fair_odds(df['BTTS %'], min_pct=50.0)
+else:
+    df['_odds_btts_y'] = np.nan
+
+if 'Over 2.5 Goals %' in df.columns:
+    df['_odds_o25_y'] = _fair_odds(df['Over 2.5 Goals %'], min_pct=50.0)
+else:
+    df['_odds_o25_y'] = np.nan
+
+
 
 # Per-fixture Custom Checklist condition flags. Computed for every fixture
 # so the table can always display a Score column, regardless of whether the
@@ -923,19 +976,6 @@ FILTER_DEFS = [
                     ("_win_margin", "<", 20)],
         "strong":  False,
     },
-    {
-        "key":   "acca_picks",
-        "label": "🎯 Acca Picks",
-        "desc":  "Picks where 5 or 6 of the Custom Checklist conditions all favour the "
-                 "model's pick (PPG, GPG, GCPG, form, venue, win/lose gap). Validated at "
-                 "65% precision across 80 picks (weekend sample) — the model is "
-                 "actually underconfident on these (predicts 51%, observes 65%). "
-                 "Stacks well with ⭐ Strong: combined hits 77% on ~35 picks. "
-                 "Auto-hides Draw picks since the score isn't defined for them.",
-        "numeric": [("_chk_score", ">=", 5)],
-        "strong":  False,
-        "hide_draws": True,
-    },
 
     # ── Market filters (independent of pick conviction) ──
     {
@@ -1039,15 +1079,15 @@ with left_col:
         unsafe_allow_html=True,
     )
     active_filters = []
-    # Row 1 — pick conviction filters (5: Strong, 4★+, Hot GPG, Hidden Gem, Acca Picks)
-    cols = st.columns(5)
-    for col, f in zip(cols, FILTER_DEFS[:5]):
+    # Row 1 — pick conviction filters
+    cols = st.columns(4)
+    for col, f in zip(cols, FILTER_DEFS[:4]):
         with col:
             if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
                 active_filters.append(f)
-    # Row 2 — markets + quality (3: BTTS+, Confident O2.5, Hide Draws)
-    cols = st.columns(5)  # 5 columns for visual alignment with row 1; trailing empties
-    for col, f in zip(cols, FILTER_DEFS[5:]):
+    # Row 2 — markets + quality
+    cols = st.columns(4)
+    for col, f in zip(cols, FILTER_DEFS[4:]):
         with col:
             if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
                 active_filters.append(f)
@@ -1371,8 +1411,9 @@ else:
         'Home Team Rank', 'Away Team Rank',
         # 2. Probabilities
         'Home Win %', 'Draw %', 'Away Win %',
-        # 3. Prediction (border before this section)
-        'Model Prediction', 'Strong Prediction', 'Confidence Score', '_chk_score',
+        # 3. Prediction (border before this section). Min Odds = the lowest
+        #    decimal odds you'd accept for the model's pick to break even.
+        'Model Prediction', 'Strong Prediction', 'Confidence Score', '_chk_score', '_odds_pick',
         # 4. Season structure
         'Home PPG (Season)',  'Away PPG (Season)',
         'Home Team GPG',      'Away Team GPG',
@@ -1386,8 +1427,8 @@ else:
         # 7. Win / Lose % — paired by team, then border, then opposite pairing
         'Home Win % (Season)',  'Away Lose % (Season)',
         'Home Lose % (Season)', 'Away Win % (Season)',
-        # 8. BTTS / Over 2.5 (just the percentages — Y/N flags moved to filters)
-        'BTTS %', 'Over 2.5 Goals %',
+        # 8. BTTS / Over 2.5 with their break-even odds
+        'BTTS %', '_odds_btts_y', 'Over 2.5 Goals %', '_odds_o25_y',
     ]
 
     available_columns = [c for c in display_columns if c in filtered_df.columns]
@@ -1414,6 +1455,21 @@ else:
             return f"{v}/6"
         table_df['_chk_score'] = table_df['_chk_score'].apply(_fmt_score)
 
+    # Format fair-odds columns. These are decimal odds. We highlight them
+    # subtly with a teal colour so it's clear at a glance "this is the
+    # price you'd need to beat" — not just another number.
+    def _fmt_odds(v):
+        if pd.isna(v):
+            return "-"
+        # Don't bother showing odds for very-low-probability picks
+        if v > 5.0:
+            return "-"
+        return f'<span style="color:#5eead4;">{v:.2f}</span>'
+
+    for c in ('_odds_pick', '_odds_btts_y', '_odds_o25_y'):
+        if c in table_df.columns:
+            table_df[c] = table_df[c].apply(_fmt_odds)
+
     table_df.rename(columns={
         'Match Date':             'Date',
         'Excel Document':         'League',
@@ -1428,6 +1484,7 @@ else:
         'Strong Prediction':      'Strong',
         'Confidence Score':       'Conf',
         '_chk_score':             'Score',
+        '_odds_pick':             'Min Odds',
         'Home PPG (Season)':      'H PPG',
         'Away PPG (Season)':      'A PPG',
         'Home Team GPG':          'H GPG',
@@ -1447,7 +1504,9 @@ else:
         'Home Lose % (Season)':   'H Lose%',
         'Away Lose % (Season)':   'A Lose%',
         'BTTS %':                 'BTTS%',
+        '_odds_btts_y':           'BTTS Min',
         'Over 2.5 Goals %':       'O2.5%',
+        '_odds_o25_y':            'O2.5 Min',
     }, inplace=True)
 
     # ── Formatting ─────────────────────────────────────────────────────────────
@@ -1575,16 +1634,16 @@ else:
 
         /* Section separators — match the column groups.
            Indices reflect the display order:
-             1.  Date | League | Home | Away              ← border after 4
-             2.  H Rank | A Rank                          ← border after 6
-             3.  H% | D% | A%                             ← border after 9
-             4.  Pick | Strong | Conf | Score             ← border after 13
-             5.  H/A PPG | H/A GPG | H/A GCPG             ← border after 19
-             6.  H Form | A Form | H Δ | A Δ              ← border after 23
-             7.  H @Home | A @Away | H @H Δ | A @A Δ      ← border after 27
-             8.  H Win% | A Lose%                         ← border after 29
-             9.  H Lose% | A Win%                         ← border after 31
-            10.  BTTS% | O2.5%                            (no trailing border)
+             1.  Date | League | Home | Away                        ← border after 4
+             2.  H Rank | A Rank                                    ← border after 6
+             3.  H% | D% | A%                                       ← border after 9
+             4.  Pick | Strong | Conf | Score | Min Odds            ← border after 14
+             5.  H/A PPG | H/A GPG | H/A GCPG                       ← border after 20
+             6.  H Form | A Form | H Δ | A Δ                        ← border after 24
+             7.  H @Home | A @Away | H @H Δ | A @A Δ                ← border after 28
+             8.  H Win% | A Lose%                                   ← border after 30
+             9.  H Lose% | A Win%                                   ← border after 32
+            10.  BTTS% | BTTS Min | O2.5% | O2.5 Min                (no trailing border)
         */
         table#bordered-sortable th:nth-child(4),
         table#bordered-sortable td:nth-child(4),
@@ -1592,18 +1651,18 @@ else:
         table#bordered-sortable td:nth-child(6),
         table#bordered-sortable th:nth-child(9),
         table#bordered-sortable td:nth-child(9),
-        table#bordered-sortable th:nth-child(13),
-        table#bordered-sortable td:nth-child(13),
-        table#bordered-sortable th:nth-child(19),
-        table#bordered-sortable td:nth-child(19),
-        table#bordered-sortable th:nth-child(23),
-        table#bordered-sortable td:nth-child(23),
-        table#bordered-sortable th:nth-child(27),
-        table#bordered-sortable td:nth-child(27),
-        table#bordered-sortable th:nth-child(29),
-        table#bordered-sortable td:nth-child(29),
-        table#bordered-sortable th:nth-child(31),
-        table#bordered-sortable td:nth-child(31) {
+        table#bordered-sortable th:nth-child(14),
+        table#bordered-sortable td:nth-child(14),
+        table#bordered-sortable th:nth-child(20),
+        table#bordered-sortable td:nth-child(20),
+        table#bordered-sortable th:nth-child(24),
+        table#bordered-sortable td:nth-child(24),
+        table#bordered-sortable th:nth-child(28),
+        table#bordered-sortable td:nth-child(28),
+        table#bordered-sortable th:nth-child(30),
+        table#bordered-sortable td:nth-child(30),
+        table#bordered-sortable th:nth-child(32),
+        table#bordered-sortable td:nth-child(32) {
             border-right: 3px solid #6c7280 !important;
         }
     </style>
