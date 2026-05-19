@@ -1427,8 +1427,8 @@ else:
         # 7. Win / Lose % — paired by team, then border, then opposite pairing
         'Home Win % (Season)',  'Away Lose % (Season)',
         'Home Lose % (Season)', 'Away Win % (Season)',
-        # 8. BTTS / Over 2.5 with their break-even odds
-        'BTTS %', '_odds_btts_y', 'Over 2.5 Goals %', '_odds_o25_y',
+        # 8. BTTS / Over 2.5 percentages
+        'BTTS %', 'Over 2.5 Goals %',
     ]
 
     available_columns = [c for c in display_columns if c in filtered_df.columns]
@@ -1466,7 +1466,7 @@ else:
             return "-"
         return f'<span style="color:#5eead4;">{v:.2f}</span>'
 
-    for c in ('_odds_pick', '_odds_btts_y', '_odds_o25_y'):
+    for c in ('_odds_pick',):
         if c in table_df.columns:
             table_df[c] = table_df[c].apply(_fmt_odds)
 
@@ -1504,9 +1504,7 @@ else:
         'Home Lose % (Season)':   'H Lose%',
         'Away Lose % (Season)':   'A Lose%',
         'BTTS %':                 'BTTS%',
-        '_odds_btts_y':           'BTTS Min',
         'Over 2.5 Goals %':       'O2.5%',
-        '_odds_o25_y':            'O2.5 Min',
     }, inplace=True)
 
     # ── Formatting ─────────────────────────────────────────────────────────────
@@ -1643,7 +1641,7 @@ else:
              7.  H @Home | A @Away | H @H Δ | A @A Δ                ← border after 28
              8.  H Win% | A Lose%                                   ← border after 30
              9.  H Lose% | A Win%                                   ← border after 32
-            10.  BTTS% | BTTS Min | O2.5% | O2.5 Min                (no trailing border)
+            10.  BTTS% | O2.5%                                      (no trailing border)
         */
         table#bordered-sortable th:nth-child(4),
         table#bordered-sortable td:nth-child(4),
