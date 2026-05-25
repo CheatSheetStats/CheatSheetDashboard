@@ -852,6 +852,11 @@ def _compute_checklist_conditions(df: pd.DataFrame) -> None:
                                   _os("Home Win % (Season)", "Away Win % (Season)")) &
                                  (_ps("Home Lose % (Season)", "Away Lose % (Season)") <
                                   _os("Home Lose % (Season)", "Away Lose % (Season)")))
+    # Avoid-flags: the pick CONTRADICTS a signal that matters (loses ~59% historically)
+    df['_avoid_venue_weaker'] = (_ps("Home PPG (At Home)", "Away PPG (Away)") <
+                                 _os("Home PPG (At Home)", "Away PPG (Away)"))
+    df['_avoid_defends_worse'] = (_ps("Home Team GCPG", "Away Team GCPG") >
+                                  _os("Home Team GCPG", "Away Team GCPG"))
 
     # Score = number of conditions passing (0-6). Draw picks get NaN.
     chk_cols = ['_chk_ppg_higher', '_chk_gpg_higher', '_chk_gcpg_lower',
@@ -936,77 +941,39 @@ with top_date_col:
 # ──────────────────────────────────────────────────────────────────────────────
 # Smart filters + Custom Checklist — side-by-side, both always visible
 # ──────────────────────────────────────────────────────────────────────────────
-left_col, right_col = st.columns([1, 1], gap="medium")
+left_col = st.container()  # single-panel filters (checklist/custom removed)
 
 FILTER_DEFS = [
-    # ── Pick conviction filters (mutually compatible — stack with AND) ──
+    # ── Evidence-based filters (validated on 198 scored games) ──
+    # BACK signals
     {
-        "key":   "strong_only",
-        "label": "⭐ Strong",
-        "desc":  "Model's Strong Prediction gate fired. Highest conviction tier. "
-                 "Validated at 78% precision across 41 picks (3-day weekend sample).",
-        "numeric": [],
-        "strong":  True,
+        "key":   "rank_gap_10",
+        "label": "📊 Rank Gap ≥10",
+        "desc":  "Picked team is 10+ league places above its opponent. Stable edge "
+                 "across every batch — ~61% win-rate vs ~52% baseline. Somewhat "
+                 "independent of the star rating, so a useful cross-check.",
+        "numeric": [("_rank_gap", ">=", 10)],
+    },
+    # AVOID signals (flag/exclude losing picks the star rating lets through)
+    {
+        "key":   "avoid_venue_weaker",
+        "label": "🚫 Hide: pick venue-weaker",
+        "desc":  "Hide picks where the model's team has a WORSE venue record than its "
+                 "opponent (home team's home PPG vs away team's away PPG). These "
+                 "contradict the venue evidence and lose ~59%.",
+        "avoid": "_avoid_venue_weaker",
     },
     {
-        "key":   "premium_4star",
-        "label": "🎯 4★+ Premium",
-        "desc":  "Confidence margin ≥ 20pp (4-star or 5-star). Broader high-conviction "
-                 "net than Strong. Validated at 70.5% precision across 61 picks.",
-        "numeric": [("_win_margin", ">=", 20)],
-        "strong":  False,
+        "key":   "avoid_defends_worse",
+        "label": "🚫 Hide: pick defends-worse",
+        "desc":  "Hide picks where the model's team concedes MORE per game than its "
+                 "opponent. These contradict the defensive evidence and lose ~59%.",
+        "avoid": "_avoid_defends_worse",
     },
-    {
-        "key":   "hot_gpg",
-        "label": "💎 Hot GPG Pick",
-        "desc":  "Favourite scores ≥ 0.6 more goals per match than opponent. "
-                 "Best single filter from held-out testing — 81.5% precision on "
-                 "27 picks across Fri+Sat. Goal-volume favourites only.",
-        "numeric": [("_fav_gpg_advantage", ">=", 0.6)],
-        "strong":  False,
-    },
-    {
-        "key":   "hidden_gem",
-        "label": "🔍 Hidden Gem",
-        "desc":  "2-3★ picks with match xG advantage ≥ 0.4 AND confidence ≥ 15pp. "
-                 "Possible value picks in the mid-tier — 78% on 9 fixtures so far. "
-                 "Small sample, treat as experimental.",
-        "numeric": [("_fav_match_xg_adv", ">=", 0.4),
-                    ("_win_margin", ">=", 15),
-                    ("_win_margin", "<", 20)],
-        "strong":  False,
-    },
-
-    # ── Market filters (independent of pick conviction) ──
-    {
-        "key":   "btts_plus",
-        "label": "🥅 BTTS+",
-        "desc":  "Both Teams to Score filter combining two validated signals: "
-                 "(a) min(home GPG, away GPG) + min(home GCPG, away GCPG) ≥ 2.80 — "
-                 "the 'bottleneck score' showing both teams attack AND both "
-                 "defences concede; AND (b) favourite win% ≤ 55% — avoids matches "
-                 "where one team is too dominant for the underdog to score. "
-                 "Validated at 70% precision across 20 picks (weekend sample).",
-        "numeric": [("_btts_min_sum",    ">=", 2.80),
-                    ("_btts_max_winpct", "<=", 55)],
-        "strong":  False,
-    },
-    {
-        "key":   "confident_o25",
-        "label": "⚽ Confident Over 2.5",
-        "desc":  "Over 2.5% ≥ 60% (absolute, league-independent). "
-                 "Validated at 58% precision across 31 picks vs 52% base rate.",
-        "numeric": [("Over 2.5 Goals %", ">=", 60)],
-        "strong":  False,
-    },
-
-    # ── Quality / avoidance filter ──
     {
         "key":   "hide_draws",
         "label": "🚫 Hide Draw Picks",
-        "desc":  "Hide fixtures where the model predicts a Draw — your 'avoid this match' "
-                 "flag. Draw picks hit at 36% across the weekend and shouldn't be bet on.",
-        "numeric": [],
+        "desc":  "Hide fixtures the model rates a Draw (close games). Not backable picks.",
         "hide_draws":  True,
     },
 ]
@@ -1079,116 +1046,30 @@ with left_col:
         unsafe_allow_html=True,
     )
     active_filters = []
-    # Row 1 — pick conviction filters
-    cols = st.columns(4)
-    for col, f in zip(cols, FILTER_DEFS[:4]):
+    # Star Rating is the primary filter (selectbox, default "2 stars and up")
+    star_choice = st.selectbox(
+        "Conviction (Star Rating)",
+        ["All picks", "2★ and up (hide avoid-tier)", "3★ only (highest conviction)"],
+        index=1,
+        help="Star Rating bundles the signals that actually predict winners "
+             "(rank, venue, defence). 3★ ~69% · 2★ ~58% · 1★ ~34% on 198 games.",
+    )
+    # One row for the back/avoid toggles
+    cols = st.columns(len(FILTER_DEFS))
+    for col, f in zip(cols, FILTER_DEFS):
         with col:
             if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
                 active_filters.append(f)
-    # Row 2 — markets + quality
-    cols = st.columns(4)
-    for col, f in zip(cols, FILTER_DEFS[4:]):
-        with col:
-            if st.checkbox(f["label"], value=False, key=f"chk_{f['key']}", help=f["desc"]):
-                active_filters.append(f)
 
-# ── RIGHT COLUMN: Custom Checklist ─────────────────────────────────────────
-with right_col:
-    st.markdown(
-        '<div class="filter-section-heading">'
-        '📋 Custom Checklist · '
-        '<span style="text-transform:none;font-weight:400;color:#666;letter-spacing:0;">'
-        '<span style="color:#f87171;">Req</span> must pass · '
-        '<span style="color:#fbbf24;">Bonus</span> = threshold · auto-hides draws</span></div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown('<div class="checklist-section">', unsafe_allow_html=True)
-
-    # Control row: picked side · min bonus slider · apply checkbox
-    _BONUS_KEYS = ["ppg_higher", "gpg_higher", "gcpg_lower",
-                   "better_form", "venue_stronger", "win_lose_gap"]
-    prior_bonus_count = sum(
-        1 for k in _BONUS_KEYS
-        if st.session_state.get(f"chk_{k}_state") == "Bonus"
-    )
-    side_col, slider_col, apply_col = st.columns([1.5, 1.8, 1.0])
-    with side_col:
-        picked_side = st.radio(
-            "Picked side",
-            options=["Home", "Both", "Away"],
-            index=1,
-            horizontal=True,
-            help="Restrict to Home picks, Away picks, or Both",
-        )
-    with slider_col:
-        if prior_bonus_count > 0:
-            min_bonus = st.slider(
-                f"Min bonus (of {prior_bonus_count})",
-                min_value=0, max_value=prior_bonus_count,
-                value=min(prior_bonus_count, max(1, prior_bonus_count - 1)),
-            )
-        else:
-            min_bonus = 0
-            st.markdown(
-                '<div style="font-size:0.7rem;color:#666;padding-top:20px;">'
-                '— set a Bonus to enable</div>',
-                unsafe_allow_html=True,
-            )
-    with apply_col:
-        st.markdown('<div style="height: 22px;"></div>', unsafe_allow_html=True)
-        use_checklist = st.checkbox("Apply", value=False)
-
-    # Table-style conditions row: 6 narrow columns, each with the condition
-    # label on top and a stacked Off/Required/Bonus radio below. This gives the
-    # "spreadsheet" feel — every condition is one cell, easy to scan.
-    CHECKLIST_CONDITIONS = [
-        {"key": "ppg_higher",     "short": "PPG"},
-        {"key": "gpg_higher",     "short": "GPG"},
-        {"key": "gcpg_lower",     "short": "GCPG"},
-        {"key": "better_form",    "short": "Form"},
-        {"key": "venue_stronger", "short": "Venue"},
-        {"key": "win_lose_gap",   "short": "W/L"},
-    ]
-    checklist_state = {}
-    cols = st.columns(6)
-    for col, cond in zip(cols, CHECKLIST_CONDITIONS):
-        with col:
-            state = st.radio(
-                cond["short"],
-                options=["Off", "Required", "Bonus"],
-                index=0,
-                key=f"chk_{cond['key']}_state",
-            )
-            checklist_state[cond["key"]] = state
-
-    st.markdown('</div>', unsafe_allow_html=True)  # close checklist-section
-
-    # Recompute live state for the filter pass below
-    bonus_count = sum(1 for s in checklist_state.values() if s == "Bonus")
-    any_active = (
-        any(s != "Off" for s in checklist_state.values())
-        or picked_side != "Both"
-    )
-
-# Map the short toggle values back to the original strings the filter uses
-_SIDE_MAP = {"Home": "Home only", "Both": "Both", "Away": "Away only"}
-picked_side = _SIDE_MAP[picked_side]
-
-# ── FULL-WIDTH: Custom thresholds (advanced) below both columns ───────────
-with st.expander("⚙️ Custom thresholds (advanced)", expanded=False):
-    cc1, cc2, cc3, cc4 = st.columns(4)
-    with cc1:
-        custom_win_pct = st.slider("Min win probability (%)", 0, 100, 50, 5)
-        custom_fav_win = st.slider("Min favourite season Win%", 0, 100, 0, 5)
-    with cc2:
-        custom_draw_pct = st.slider("Max draw probability (%)", 0, 50, 30, 1)
-        custom_dog_lose = st.slider("Min underdog season Lose%", 0, 100, 0, 5)
-    with cc3:
-        custom_margin   = st.slider("Min confidence margin (pp)", 0, 50, 0, 1)
-        custom_xg_gap   = st.slider("Min match xG gap", 0.0, 3.0, 0.0, 0.1)
-    with cc4:
-        custom_rank_gap = st.slider("Min league rank gap", 0, 24, 0, 1)
-        use_custom      = st.checkbox("Apply custom thresholds", value=False)
+# Checklist and custom-threshold filters were removed (they referenced signals
+# shown to add no predictive edge on 198 scored games). Neutral flags so the
+# downstream application blocks are inert.
+use_checklist = False
+any_active    = False
+use_custom    = False
+checklist_state = {}
+picked_side   = "Both"
+min_bonus     = 0
 
 # Metrics dashboard placeholder — populated after filter logic computes filtered_df
 metrics_placeholder = st.empty()
@@ -1219,7 +1100,11 @@ for f in active_filters:
         combined_mask &= filtered_df['Strong Prediction'].notna()
     if f.get("hide_draws"):
         combined_mask &= (filtered_df['Model Prediction'] != 'Draw')
-    for col, op, val in f["numeric"]:
+    if f.get("avoid"):
+        col = f["avoid"]
+        if col in filtered_df.columns:
+            combined_mask &= ~filtered_df[col].fillna(False)
+    for col, op, val in f.get("numeric", []):
         if col not in filtered_df.columns:
             continue
         if op == ">=":
@@ -1230,24 +1115,6 @@ for f in active_filters:
             combined_mask &= filtered_df[col] > val
         elif op == "<":
             combined_mask &= filtered_df[col] < val
-
-if use_custom:
-    smart_filter_active = True
-    active_descs.append(
-        f"Win% ≥ {custom_win_pct} · Draw% ≤ {custom_draw_pct} · "
-        f"Margin ≥ {custom_margin}pp · xG gap ≥ {custom_xg_gap} · "
-        f"Rank gap ≥ {custom_rank_gap} · "
-        f"Fav Win% ≥ {custom_fav_win} · Dog Lose% ≥ {custom_dog_lose}"
-    )
-    combined_mask &= (
-        (filtered_df['_fav_win_pct'] >= custom_win_pct) &
-        (filtered_df['Draw %']       <= custom_draw_pct) &
-        (filtered_df['_win_margin']  >= custom_margin) &
-        (filtered_df['_xg_match_gap']>= custom_xg_gap) &
-        (filtered_df['_rank_gap'].fillna(0)         >= custom_rank_gap) &
-        (filtered_df['_fav_season_win'].fillna(0)   >= custom_fav_win) &
-        (filtered_df['_dog_season_lose'].fillna(0)  >= custom_dog_lose)
-    )
 
 # Custom checklist evaluation. Reads the precomputed _chk_* condition flags
 # (set earlier on every row of df) and applies Required/Bonus logic plus the
@@ -1302,6 +1169,16 @@ if use_checklist and any_active:
     if bonus_descs:
         summary_parts.append(f"Bonus ≥ {min_bonus}/{len(bonus_descs)}: {', '.join(bonus_descs)}")
     active_descs.append("Checklist · " + " · ".join(summary_parts))
+
+# Star Rating primary filter
+if 'Star Rating' in filtered_df.columns and star_choice != "All picks":
+    smart_filter_active = True
+    if star_choice.startswith("3"):
+        combined_mask &= (filtered_df['Star Rating'] >= 3)
+        active_descs.append("3★ only")
+    else:
+        combined_mask &= (filtered_df['Star Rating'] >= 2)
+        active_descs.append("2★ and up")
 
 if smart_filter_active:
     filtered_df = filtered_df[combined_mask]
