@@ -1442,12 +1442,17 @@ else:
     ]
 
     available_columns = [c for c in display_columns if c in filtered_df.columns]
-    table_df = filtered_df[available_columns].copy()
+    # Carry Star Rating through even though it isn't itself displayed — the Conf
+    # column is rendered FROM it. Without this it gets dropped and the star
+    # conversion silently falls back to the (1-2 only) margin path.
+    _carry = ['Star Rating'] if ('Star Rating' in filtered_df.columns and 'Star Rating' not in available_columns) else []
+    table_df = filtered_df[available_columns + _carry].copy()
 
     # Convert Confidence Score column → stars (do this before rename).
     # Prefer the model's 1-3 Star Rating; fall back to the score only if absent.
     if 'Star Rating' in table_df.columns:
         table_df['Confidence Score'] = table_df['Star Rating'].apply(stars_from_rating)
+        table_df = table_df.drop(columns=['Star Rating'])   # was only carried for the conversion
     elif 'Confidence Score' in table_df.columns:
         table_df['Confidence Score'] = table_df['Confidence Score'].apply(stars_from_margin)
 
