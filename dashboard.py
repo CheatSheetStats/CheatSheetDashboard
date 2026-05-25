@@ -613,7 +613,7 @@ with st.expander("📖 Key — what the columns and filters mean"):
 **🔮 Prediction**
 - **Pick** — the model's headline prediction (highest probability, or "Draw" if Draw Gate is on)
 - **Strong** — name in this column means the Strong Prediction gate fired (high-conviction pick that confirms across stats)
-- **Conf** — confidence as stars: ★ coin flip · ★★ slight lean · ★★★ clear favourite · ★★★★ strong · ★★★★★ very strong
+- **Conf** — conviction tier: ★★★ clear mismatch (~75% historically) · ★★ standard (~57%) · ★ avoid (~33%)
 
 **📈 Season structure** *(how the team has performed all season)*
 - **H PPG / A PPG** — Points per game
@@ -1386,14 +1386,24 @@ else:
     # Confidence Score is the probability margin (top minus second).
     # Stars rendered in gold so they stand out from the surrounding numbers.
     GOLD = "#fbbf24"  # tailwind amber-400 — readable against dark theme
+    def _stars_html(n_full):
+        # n_full = number of gold stars (1-3); pad to 3 with dim stars
+        full = "★" * n_full
+        dim  = "☆" * (3 - n_full)
+        return f'<span style="color:{GOLD};">{full}</span><span style="color:#555;">{dim}</span>'
+
+    def stars_from_rating(v):
+        # Model's 1-3 Star Rating: 3★ clear mismatch (~75%), 2★ standard (~57%), 1★ avoid (~33%)
+        if pd.isna(v): return "-"
+        n = int(v)
+        n = 1 if n < 1 else (3 if n > 3 else n)
+        return _stars_html(n)
+
     def stars_from_margin(m):
-        if pd.isna(m):       return "-"
-        if m < 5:            stars = "★"
-        elif m < 10:         stars = "★★"
-        elif m < 20:         stars = "★★★"
-        elif m < 35:         stars = "★★★★"
-        else:                stars = "★★★★★"
-        return f'<span style="color:{GOLD};">{stars}</span>'
+        # Fallback only (older files without a Star Rating column): map composite/margin to 1-3
+        if pd.isna(m):   return "-"
+        if m < 57:       return _stars_html(1)
+        return _stars_html(2)
 
     # ── Build display table ────────────────────────────────────────────────────
     # Logical column order matches the six-section thinking flow:
@@ -1434,8 +1444,11 @@ else:
     available_columns = [c for c in display_columns if c in filtered_df.columns]
     table_df = filtered_df[available_columns].copy()
 
-    # Convert Confidence Score → stars (do this before rename)
-    if 'Confidence Score' in table_df.columns:
+    # Convert Confidence Score column → stars (do this before rename).
+    # Prefer the model's 1-3 Star Rating; fall back to the score only if absent.
+    if 'Star Rating' in table_df.columns:
+        table_df['Confidence Score'] = table_df['Star Rating'].apply(stars_from_rating)
+    elif 'Confidence Score' in table_df.columns:
         table_df['Confidence Score'] = table_df['Confidence Score'].apply(stars_from_margin)
 
     # Format checklist score "N/6" with colour banding
